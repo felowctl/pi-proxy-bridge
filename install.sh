@@ -1,13 +1,23 @@
-#!/bin/bash
+#!/bin/sh
 
 # Installation script for pi-proxy-bridge
 
 set -e
 
-echo Installing dependencies
+REQUIRED_PACKAGES="hostapd dnsmasq iptables iptables-persistent"
+MISSING_PACKAGES=""
 
-sudo apt update > /dev/null
-sudo apt install -y hostapd dnsmasq iptables iptables-persistent > /dev/null
+for pkg in $REQUIRED_PACKAGES; do
+  if ! dpkg -s "$pkg" &> /dev/null; then
+    MISSING_PACKAGES="$MISSING_PACKAGES $pkg"
+  fi
+done
+
+if [ -n "$MISSING_PACKAGES" ]; do
+  echo "Missing required packages. Install them with:"
+  echo "  sudo apt install $MISSING_PACKAGES"
+  exit 1
+done
 
 sudo systemctl unmask hostapd
 sudo systemctl stop hostapd dnsmasq
