@@ -24,18 +24,27 @@ if [ -n "$MISSING_PACKAGES" ]; then
   exit 1
 fi
 
+
+step() { echo -e "\n\033[1;34m==> $1\033[0m"; }
+warn() { echo -e "\033[1;33m[WARN] $1\033[0m"; }
+ok()   { echo -e "\033[1;32m[OK] $1\033[0m"; }
+
+
 systemctl unmask hostapd &> /dev/null
 systemctl stop hostapd dnsmasq > /dev/null
 
-echo Configuring hostapd
+step "Unmanaging wlan1 in NetworkManager"
 
 tee /etc/NetworkManager/conf.d/unmanaged.conf > /dev/null <<EOF
 [keyfile]
 unmanaged-devices=interface-name:wlan1
 EOF
 systemctl restart NetworkManager > /dev/null
-
 sleep 5
+
+ok "NetworkManager will no longer manager wlan1"
+
+step "Writing hostapd.conf"
 
 tee /etc/hostapd/hostapd.conf > /dev/null <<EOF
 interface=wlan1
@@ -58,6 +67,10 @@ wpa_key_mgmt=WPA-PSK
 rsn_pairwise=CCMP
 EOF
 
+ok "hostapd.conf written"
+
+step "Creating static IP systemd service for wlan1"
+
 tee /etc/systemd/system/wlan1-static-ip.service > /dev/null <<EOF
 [Unit]
 Description=Set static IP for wlan1 (pi-proxy-bridge)
@@ -73,18 +86,25 @@ ExecStart=/sbin/ip link set wlan1 up
 WantedBy=multi-user.target
 EOF
 
-echo Configuring dnsmasq
+ok "Static IP set on wlan1"
+
+step "Writing dnsmasq.conf"
 
 tee /etc/dnsmasq.conf > /dev/null <<EOF
 interface=wlan1
 dhcp-range=192.168.2.10,192.168.2.50,12h
 EOF
 
-echo Configuring forwarding
+ok "dnsmasq.conf written"
+
+step "Enabling IP forwarding"
 
 tee /etc/sysctl.d/99-tproxy.conf > /dev/null <<EOF
 net.ipv4.ip_forward=1
 EOF
+sysctl --system > /dev/null
+
+ok "IP forwarding enabled"
 
 # iptables -t nat -A POSTROUTING -o wlan0 -j MASQUERADE > /dev/null
 # iptables -A FORWARD -i wlan1 -o wlan0 -m state --state RELATED,ESTABLISHED -j ACCEPT > /dev/null
@@ -92,14 +112,25 @@ EOF
 # 
 # netfilter-persistent save > /dev/null
 
-echo Installing xray
+step "Starting hostapd and dnsmasq"
 
-bash -c "$(curl -L https://github.com/XTLS/Xray-install/raw/main/install-release.sh)" @ install > /dev/null
+systemctl daemon-reload &> /dev/null
+systemctl enable hostapd dnsmasq wlan1-static-ip &> /dev/null
+systemctl start hostapd dnsmasq wlan1-static-ip &> /dev/null
+sleep 2
+
+ok "Hotspot is running"
+
+step "Installing Xray"
+
+bash -c "$(curl -L https://github.com/XTLS/Xray-install/raw/main/install-release.sh)" @ install
 
 if ! command -v xray &> /dev/null; then
   echo "Xray installation failed" >&2
   exit 1
 fi
+
+step "Writing Xray config"
 
 read -p "Enter trojan address " TROJAN_ADDRESS
 read -p "Enter trojan port " TROJAN_PORT
@@ -173,6 +204,14 @@ tee /usr/local/etc/xray/config.json > /dev/null <<EOF
 }
 EOF
 
+sudo systemctl enable xray &> /dev/null
+sudo systemctl restart xray &> /dev/null
+sleep 2
+
+systemctl is-active --quiet xray && ok "Xray is running" || warn "Xray failed to start"
+
+step "Setting up policy routing for tproxy"
+
 tee "/etc/systemd/system/xray-routing.service" > /dev/null <<EOF
 [Unit]
 Description=Xray TProxy policy routing (pi-proxy-bridge)
@@ -188,7 +227,14 @@ RemainAfterExit=yes
 WantedBy=multi-user.target
 EOF
 
-echo Setting up iptables rules
+systemctl daemon-reload &> /dev/null
+systemctl enable xray-routing &> /dev/null
+systemctl start xray-routing &> /dev/null
+sleep 2
+
+ok "Policy routing applied"
+
+step "Setting up iptables rules"
 
 iptables -t mangle -N XRAY
 iptables -t mangle -A XRAY -d 10.0.0.0/8 -j RETURN
@@ -207,10 +253,6 @@ iptables -t mangle -A PREROUTING -j XRAY
 
 netfilter-persistent save &> /dev/null
 
-echo Starting services
+ok "iptables rules set up"
 
-sysctl --system > /dev/null
-
-systemctl daemon-reload &> /dev/null
-systemctl enable hostapd dnsmasq xray wlan1-static-ip xray-routing &> /dev/null
-systemctl start hostapd dnsmasq xray wlan1-static-ip xray-routing &> /dev/null
+ok "pi-proxy-bridge installed"
