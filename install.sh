@@ -24,7 +24,7 @@ if [ -n "$MISSING_PACKAGES" ]; then
   exit 1
 fi
 
-systemctl unmask hostapd > /dev/null
+systemctl unmask hostapd &> /dev/null
 systemctl stop hostapd dnsmasq > /dev/null
 
 echo Configuring hostapd
@@ -34,6 +34,8 @@ tee /etc/NetworkManager/conf.d/unmanaged.conf > /dev/null <<EOF
 unmanaged-devices=interface-name:wlan1
 EOF
 systemctl restart NetworkManager > /dev/null
+
+sleep 5
 
 tee /etc/hostapd/hostapd.conf > /dev/null <<EOF
 interface=wlan1
@@ -92,15 +94,20 @@ EOF
 
 echo Installing xray
 
-bash -c "$(curl -L https://github.com/XTLS/Xray-install/raw/main/install-release.sh)" @ install
+bash -c "$(curl -L https://github.com/XTLS/Xray-install/raw/main/install-release.sh)" @ install > /dev/null
 
-read -p "Enter trojan address" TROJAN_ADDRESS
-read -p "Enter trojan port" TROJAN_PORT
-read -p "Enter trojan password" TROJAN_PASSWORD
-read -p "Enter trojan sni" TROJAN_SNI
-read -p "Enter trojan fingerprint" TROJAN_FINGERPRINT
+if ! command -v xray &> /dev/null; then
+  echo "Xray installation failed" >&2
+  exit 1
+fi
 
-sudo tee /usr/local/etc/xray/config.json > /dev/null <<EOF
+read -p "Enter trojan address " TROJAN_ADDRESS
+read -p "Enter trojan port " TROJAN_PORT
+read -p "Enter trojan password " TROJAN_PASSWORD
+read -p "Enter trojan sni " TROJAN_SNI
+read -p "Enter trojan fingerprint " TROJAN_FINGERPRINT
+
+tee /usr/local/etc/xray/config.json > /dev/null <<EOF
 {
   "log": {
     "loglevel": "warning"
@@ -111,7 +118,7 @@ sudo tee /usr/local/etc/xray/config.json > /dev/null <<EOF
       "port": 12345,
       "protocol": "tunnel",
       "settings": {
-        "network": "tcp,udp",
+        "allowedNetwork": "tcp,udp",
         "followRedirect": true
       },
       "sniffing": {
@@ -166,7 +173,6 @@ sudo tee /usr/local/etc/xray/config.json > /dev/null <<EOF
 }
 EOF
 
-
 tee "/etc/systemd/system/xray-routing.service" > /dev/null <<EOF
 [Unit]
 Description=Xray TProxy policy routing (pi-proxy-bridge)
@@ -181,7 +187,6 @@ RemainAfterExit=yes
 [Install]
 WantedBy=multi-user.target
 EOF
-
 
 echo Setting up iptables rules
 
@@ -200,13 +205,12 @@ iptables -t mangle -A XRAY -p tcp -j TPROXY --on-port 12345 --tproxy-mark 1
 iptables -t mangle -A XRAY -p udp -j TPROXY --on-port 12345 --tproxy-mark 1
 iptables -t mangle -A PREROUTING -j XRAY
 
-netfilter-persistent save > /dev/null
-
+netfilter-persistent save &> /dev/null
 
 echo Starting services
 
 sysctl --system > /dev/null
 
-systemctl daemon-reload > /dev/null
-systemctl enable hostapd dnsmasq xray wlan1-static-ip xray-routing > /dev/null
-systemctl start hostapd dnsmasq xray wlan1-static-ip xray-routing > /dev/null
+systemctl daemon-reload &> /dev/null
+systemctl enable hostapd dnsmasq xray wlan1-static-ip xray-routing &> /dev/null
+systemctl start hostapd dnsmasq xray wlan1-static-ip xray-routing &> /dev/null
