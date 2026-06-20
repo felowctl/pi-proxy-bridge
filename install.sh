@@ -1,14 +1,18 @@
-#!/bin/sh
+#!/bin/bash
 
 # Installation script for pi-proxy-bridge
 
 set -e
 
-sudo apt update
-sudo apt install -y hostapd dnsmasq iptables iptables-persistent
+echo Installing dependencies
+
+sudo apt update > /dev/null
+sudo apt install -y hostapd dnsmasq iptables iptables-persistent > /dev/null
 
 sudo systemctl unmask hostapd
 sudo systemctl stop hostapd dnsmasq
+
+echo Configuring hostapd
 
 sudo tee /etc/NetworkManager/conf.d/unmanaged.conf > /dev/null <<EOF
 [keyfile]
@@ -52,23 +56,29 @@ ExecStart=/sbin/ip link set wlan1 up
 WantedBy=multi-user.target
 EOF
 
+echo Configuring dnsmasq
+
 sudo tee /etc/dnsmasq.conf > /dev/null <<EOF
 interface=wlan1
 dhcp-range=192.168.2.10,192.168.2.50,12h
 EOF
 
-sudo tee /etc/sysctl/99-tproxy.conf > /dev/null <<EOF
+echo Configuring forwarding
+
+sudo tee /etc/sysctl.d/99-tproxy.conf > /dev/null <<EOF
 net.ipv4.ip_forward=1
 EOF
-
-sudo sysctl --system
-
-sudo systemctl daemon-reload
-sudo systemctl enable hostapd dnsmasq wlan1-static-ip
-sudo systemctl start hostapd dnsmasq wlan1-static-ip 
 
 sudo iptables -t nat -A POSTROUTING -o wlan0 -j MASQUERADE
 sudo iptables -A FORWARD -i wlan1 -o wlan0 -m state --state RELATED,ESTABLISHED -j ACCEPT
 sudo iptables -A FORWARD -i wlan0 -o wlan1 -j ACCEPT
 
-sudo netfilter-persistent save
+sudo netfilter-persistent save > /dev/null
+
+echo Starting services
+
+sudo sysctl --system > /dev/null
+
+sudo systemctl daemon-reload
+sudo systemctl enable hostapd dnsmasq wlan1-static-ip
+sudo systemctl start hostapd dnsmasq wlan1-static-ip 
