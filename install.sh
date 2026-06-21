@@ -120,10 +120,12 @@ EOF
 
 ok "dnsmasq.conf written"
 
-step "Enabling IP forwarding"
+step "Enabling IP forwarding and disabling ipv6"
 
 tee /etc/sysctl.d/99-tproxy.conf > /dev/null <<EOF
 net.ipv4.ip_forward=1
+net.ipv6.conf.all.disable_ipv6=1
+net.ipv6.conf.default.disable_ipv6=1
 EOF
 sysctl --system > /dev/null
 
@@ -148,7 +150,7 @@ ok "Hotspot is running"
 
 step "Installing Xray"
 
-bash -c "$(curl -L https://github.com/XTLS/Xray-install/raw/main/install-release.sh)" @ install  &> /dev/null
+bash -c "$(curl -L https://github.com/XTLS/Xray-install/raw/main/install-release.sh)" @ install
 
 if ! command -v xray &> /dev/null; then
   warn "Xray installation failed" >&2
