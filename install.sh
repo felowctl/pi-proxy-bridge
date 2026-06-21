@@ -1,15 +1,22 @@
 #!/bin/bash
 
-# Installation script for pi-proxy-bridge
+# Installation script for pi-proxy-bridge. Requires two separate wifi interfaces
 
 set -e
 
 if [ "$EUID" -ne 0 ]; then
-  echo "Please run as root" >&2
+  echo "Please run as root." >&2
   exit 1
 fi
 
+
+step() { echo -e "\n\033[1;34m==> $1\033[0m"; }
+warn() { echo -e "\033[1;33m[WARN] $1\033[0m"; }
+ok()   { echo -e "\033[1;32m[OK] $1\033[0m"; }
+
+
 cat <<'EOF'
+
   ____  _   ____                        ____       _     _            
  |  _ \(_) |  _ \ _ __ _____  ___   _  | __ ) _ __(_) __| | __ _  ___ 
  | |_) | | | |_) | '__/ _ \ \/ / | | | |  _ \| '__| |/ _` |/ _` |/ _ \
@@ -17,6 +24,16 @@ cat <<'EOF'
  |_|   |_| |_|   |_|  \___/_/\_\\__, | |____/|_|  |_|\__,_|\__, |\___|
                                 |___/                      |___/      
 EOF
+
+if ! ip link show wlan0 &> /dev/null; then
+  warn "wlan0 not found" >&2
+  exit 1
+fi
+
+if ! ip link show wlan1 &> /dev/null; then
+  warn "wlan1 not found" >&2
+  exit 1
+fi
 
 REQUIRED_PACKAGES="hostapd dnsmasq iptables iptables-persistent"
 MISSING_PACKAGES=""
@@ -28,16 +45,10 @@ for pkg in $REQUIRED_PACKAGES; do
 done
 
 if [ -n "$MISSING_PACKAGES" ]; then
-  echo "Missing required packages. Install them with:"
-  echo "  sudo apt install$MISSING_PACKAGES"
+  warn "Missing required packages. Install them with:"
+  warn "  sudo apt install$MISSING_PACKAGES"
   exit 1
 fi
-
-
-step() { echo -e "\n\033[1;34m==> $1\033[0m"; }
-warn() { echo -e "\033[1;33m[WARN] $1\033[0m"; }
-ok()   { echo -e "\033[1;32m[OK] $1\033[0m"; }
-
 
 systemctl unmask hostapd &> /dev/null
 systemctl stop hostapd dnsmasq > /dev/null
@@ -88,7 +99,7 @@ BindsTo=sys-subsystem-net-devices-wlan1.device
 
 [Service]
 Type=oneshot
-ExecStart=/sbin/ip addr add 192.168.2.1/24 dev wlan1
+ExecStart=/sbin/ip addr replace 192.168.2.1/24 dev wlan1
 ExecStart=/sbin/ip link set wlan1 up
 
 [Install]
@@ -134,28 +145,29 @@ ok "Hotspot is running"
 
 step "Installing Xray"
 
-bash -c "$(curl -L https://github.com/XTLS/Xray-install/raw/main/install-release.sh)" @ install > /dev/null
+bash -c "$(curl -L https://github.com/XTLS/Xray-install/raw/main/install-release.sh)" @ install  &> /dev/null
 
 if ! command -v xray &> /dev/null; then
-  echo "Xray installation failed" >&2
+  warn "Xray installation failed" >&2
   exit 1
 fi
 
 step "Writing Xray config"
 
-read -rs -p "Paste your trojan:// link: " TROJAN_LINK
-echo
- 
-if [[ ! "$TROJAN_LINK" =~ ^trojan:// ]]; then
-  echo "It is not a valid trojan:// link" >&2
-  exit 1
-fi
+while true; do
+  read -rs -p "Paste your trojan:// link: " TROJAN_LINK
+  echo
+  
+  if [[ "$TROJAN_LINK" =~ ^trojan:// ]]; then
+    break
+  fi
+
+  warn "It is not a valid trojan:// link" >&2
+done
 
 LINK_BODY="${TROJAN_LINK#trojan://}"
 
-REMARK=""
 if [[ "$LINK_BODY" == *"#"* ]]; then
-  REMARK="${LINK_BODY#*#}"
   LINK_BODY="${LINK_BODY%%#*}"
 fi
 
@@ -164,7 +176,6 @@ if [[ "$LINK_BODY" == *"?"* ]]; then
   QUERY="${LINK_BODY#*\?}"
   LINK_BODY="${LINK_BODY%%\?*}"
 fi
-
 
 TROJAN_PASSWORD="${LINK_BODY%%@*}"
 HOST_PORT="${LINK_BODY#*@}"
@@ -302,4 +313,6 @@ netfilter-persistent save &> /dev/null
 
 ok "iptables rules set up"
 
+echo
 ok "pi-proxy-bridge installed"
+echo
