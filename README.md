@@ -13,3 +13,6 @@ sudo ./install.sh
 ```
 
 Tested on Raspberry Pi 4B with TP-Link Archer TX1U Nano and [this driver](https://github.com/Kiborgik/aic8800dc-linux-patched).
+
+## Demonstration
+![Demonstration Gif](demo.gif)
