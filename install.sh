@@ -9,6 +9,15 @@ if [ "$EUID" -ne 0 ]; then
   exit 1
 fi
 
+cat <<'EOF'
+  ____  _   ____                        ____       _     _            
+ |  _ \(_) |  _ \ _ __ _____  ___   _  | __ ) _ __(_) __| | __ _  ___ 
+ | |_) | | | |_) | '__/ _ \ \/ / | | | |  _ \| '__| |/ _` |/ _` |/ _ \
+ |  __/| | |  __/| | | (_) >  <| |_| | | |_) | |  | | (_| | (_| |  __/
+ |_|   |_| |_|   |_|  \___/_/\_\\__, | |____/|_|  |_|\__,_|\__, |\___|
+                                |___/                      |___/      
+EOF
+
 REQUIRED_PACKAGES="hostapd dnsmasq iptables iptables-persistent"
 MISSING_PACKAGES=""
 
@@ -125,7 +134,7 @@ ok "Hotspot is running"
 
 step "Installing Xray"
 
-bash -c "$(curl -L https://github.com/XTLS/Xray-install/raw/main/install-release.sh)" @ install
+bash -c "$(curl -L https://github.com/XTLS/Xray-install/raw/main/install-release.sh)" @ install > /dev/null
 
 if ! command -v xray &> /dev/null; then
   echo "Xray installation failed" >&2
@@ -134,7 +143,8 @@ fi
 
 step "Writing Xray config"
 
-read -p "Paste your trojan:// link: " TROJAN_LINK
+read -rs -p "Paste your trojan:// link: " TROJAN_LINK
+echo
  
 if [[ ! "$TROJAN_LINK" =~ ^trojan:// ]]; then
   echo "It is not a valid trojan:// link" >&2
