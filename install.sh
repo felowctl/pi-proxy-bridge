@@ -11,7 +11,7 @@ fi
 
 
 step() { echo -e "\n\033[1;34m==> $1\033[0m"; }
-warn() { echo -e "\033[1;33m[WARN] $1\033[0m"; }
+warn() { echo -e "\033[1;33m[WARN] $1\033[0m"; >&2 }
 ok()   { echo -e "\033[1;32m[OK] $1\033[0m"; }
 
 
@@ -23,17 +23,18 @@ cat <<'EOF'
 |   __| |  |   __|  _| . |_'_| | |  | __ -|  _| | . | . | -_|
 |__|  |_|  |__|  |_| |___|_,_|_  |  |_____|_| |_|___|_  |___|
                              |___|                  |___|    
-
 EOF
 printf "\033[0m"
 
 if ! ip link show wlan0 &> /dev/null; then
-  warn "wlan0 not found" >&2
+  echo 
+  warn "wlan0 not found"
   exit 1
 fi
 
 if ! ip link show wlan1 &> /dev/null; then
-  warn "wlan1 not found" >&2
+  echo
+  warn "wlan1 not found"
   exit 1
 fi
 
@@ -47,6 +48,7 @@ for pkg in $REQUIRED_PACKAGES; do
 done
 
 if [ -n "$MISSING_PACKAGES" ]; then
+  echo
   warn "Missing required packages. Install them with:"
   warn "  sudo apt install$MISSING_PACKAGES"
   exit 1
@@ -145,13 +147,21 @@ sleep 2
 
 ok "Hotspot is running"
 
+
+
 step "Installing Xray"
 
-bash -c "$(curl --retry 3 --retry-delay 3 --max-time 20 -fsSL https://github.com/XTLS/Xray-install/raw/main/install-release.sh)" @ install
+if command -v xray &> /dev/null; then
+  ok "Xray is already installed ($(xray version | head -1)), skipping install"
+else
+  bash -c "$(curl --retry 3 --retry-delay 5 --max-time 20 -fsSL https://github.com/XTLS/Xray-install/raw/main/install-release.sh)" @ install
 
-if ! command -v xray &> /dev/null; then
-  warn "Xray installation failed" >&2
-  exit 1
+  if ! command -v xray &> /dev/null; then
+    warn "Xray installation failed"
+    exit 1
+  fi
+
+  ok "Xray installed successfully"
 fi
 
 step "Writing Xray config"
@@ -164,7 +174,7 @@ while true; do
     break
   fi
 
-  warn "It is not a valid trojan:// link" >&2
+  warn "It is not a valid trojan:// link"
 done
 
 LINK_BODY="${TROJAN_LINK#trojan://}"
@@ -295,7 +305,9 @@ ok "Policy routing applied"
 
 step "Setting up iptables rules"
 
+iptables -t mangle -D PREROUTING -j XRAY 2>/dev/null || true
 iptables -t mangle -F XRAY 2>/dev/null || true
+iptables -t mangle -X XRAY 2>/dev/null || true
 iptables -t mangle -N XRAY
 iptables -t mangle -A XRAY -d 10.0.0.0/8 -j RETURN
 iptables -t mangle -A XRAY -d 100.64.0.0/10 -j RETURN
@@ -316,5 +328,5 @@ netfilter-persistent save &> /dev/null
 ok "iptables rules set up"
 
 echo
-ok "pi-proxy-bridge installed"
+ok "pi-proxy-bridge installed."
 echo
