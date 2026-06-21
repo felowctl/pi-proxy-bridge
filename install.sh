@@ -11,7 +11,7 @@ fi
 
 
 step() { echo -e "\n\033[1;34m==> $1\033[0m"; }
-warn() { echo -e "\033[1;33m[WARN] $1\033[0m"; >&2 }
+warn() { echo -e "\033[1;33m[WARN] $1\033[0m" >&2; }
 ok()   { echo -e "\033[1;32m[OK] $1\033[0m"; }
 
 
@@ -325,6 +325,6 @@ netfilter-persistent save &> /dev/null
 
 ok "iptables rules set up"
 
-echo
+echo ""
 ok "pi-proxy-bridge installed."
-echo
+echo ""
