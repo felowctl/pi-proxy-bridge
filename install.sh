@@ -147,8 +147,6 @@ sleep 2
 
 ok "Hotspot is running"
 
-
-
 step "Installing Xray"
 
 if command -v xray &> /dev/null; then
