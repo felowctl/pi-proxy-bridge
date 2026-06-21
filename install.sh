@@ -26,13 +26,13 @@ cat <<'EOF'
 EOF
 printf "\033[0m"
 
-if ! ip link show wlan0 &> /dev/null; then
+if ! ip link show wlan0 &>/dev/null; then
   echo 
   warn "wlan0 not found"
   exit 1
 fi
 
-if ! ip link show wlan1 &> /dev/null; then
+if ! ip link show wlan1 &>/dev/null; then
   echo
   warn "wlan1 not found"
   exit 1
@@ -54,23 +54,23 @@ if [ -n "$MISSING_PACKAGES" ]; then
   exit 1
 fi
 
-systemctl unmask hostapd &> /dev/null
-systemctl stop hostapd dnsmasq > /dev/null
+systemctl unmask hostapd &>/dev/null
+systemctl stop hostapd dnsmasq >/dev/null
 
 step "Unmanaging wlan1 in NetworkManager"
 
-tee /etc/NetworkManager/conf.d/unmanaged.conf > /dev/null <<EOF
+tee /etc/NetworkManager/conf.d/unmanaged.conf >/dev/null <<EOF
 [keyfile]
 unmanaged-devices=interface-name:wlan1
 EOF
-systemctl restart NetworkManager > /dev/null
+systemctl restart NetworkManager >/dev/null
 sleep 5
 
 ok "NetworkManager will no longer manage wlan1"
 
 step "Writing hostapd.conf"
 
-tee /etc/hostapd/hostapd.conf > /dev/null <<EOF
+tee /etc/hostapd/hostapd.conf >/dev/null <<EOF
 interface=wlan1
 driver=nl80211
 ssid=PiRouter
@@ -95,7 +95,7 @@ ok "hostapd.conf written"
 
 step "Creating static IP systemd service for wlan1"
 
-tee /etc/systemd/system/wlan1-static-ip.service > /dev/null <<EOF
+tee /etc/systemd/system/wlan1-static-ip.service >/dev/null <<EOF
 [Unit]
 Description=Set static IP for wlan1 (pi-proxy-bridge)
 After=sys-subsystem-net-devices-wlan1.device
@@ -114,7 +114,7 @@ ok "Static IP set on wlan1"
 
 step "Writing dnsmasq.conf"
 
-tee /etc/dnsmasq.conf > /dev/null <<EOF
+tee /etc/dnsmasq.conf >/dev/null <<EOF
 interface=wlan1
 dhcp-range=192.168.2.10,192.168.2.50,12h
 EOF
@@ -123,38 +123,38 @@ ok "dnsmasq.conf written"
 
 step "Enabling IP forwarding"
 
-tee /etc/sysctl.d/99-tproxy.conf > /dev/null <<EOF
+tee /etc/sysctl.d/99-tproxy.conf >/dev/null <<EOF
 net.ipv4.ip_forward=1
 EOF
 sysctl --system > /dev/null
 
 ok "IP forwarding enabled"
 
-# iptables -t nat -A POSTROUTING -o wlan0 -j MASQUERADE > /dev/null
-# iptables -A FORWARD -i wlan1 -o wlan0 -m state --state RELATED,ESTABLISHED -j ACCEPT > /dev/null
-# iptables -A FORWARD -i wlan0 -o wlan1 -j ACCEPT > /dev/null
+# iptables -t nat -A POSTROUTING -o wlan0 -j MASQUERADE >/dev/null
+# iptables -A FORWARD -i wlan1 -o wlan0 -m state --state RELATED,ESTABLISHED -j ACCEPT >/dev/null
+# iptables -A FORWARD -i wlan0 -o wlan1 -j ACCEPT >/dev/null
 # 
-# netfilter-persistent save > /dev/null
+# netfilter-persistent save >/dev/null
 
 step "Starting hostapd and dnsmasq"
 
-systemctl daemon-reload &> /dev/null
-systemctl enable hostapd dnsmasq wlan1-static-ip &> /dev/null
+systemctl daemon-reload &>/dev/null
+systemctl enable hostapd dnsmasq wlan1-static-ip &>/dev/null
 systemctl start wlan1-static-ip
 sleep 2
-systemctl start hostapd dnsmasq &> /dev/null
+systemctl start hostapd dnsmasq &>/dev/null
 sleep 2
 
 ok "Hotspot is running"
 
 step "Installing Xray"
 
-if command -v xray &> /dev/null; then
-  ok "Xray is already installed ($(xray version | head -1)), skipping install"
+if command -v xray &>/dev/null; then
+  ok "Xray is already installed ($(xray version | head -1 | awk '{print $2}')), skipping install"
 else
   bash -c "$(curl --retry 3 --retry-delay 5 --max-time 20 -fsSL https://github.com/XTLS/Xray-install/raw/main/install-release.sh)" @ install
 
-  if ! command -v xray &> /dev/null; then
+  if ! command -v xray &>/dev/null; then
     warn "Xray installation failed"
     exit 1
   fi
@@ -205,7 +205,7 @@ fi
 TROJAN_SNI="${PARAMS[sni]:-$TROJAN_ADDRESS}"
 TROJAN_FINGERPRINT="${PARAMS[fp]:-chrome}"
 
-tee /usr/local/etc/xray/config.json > /dev/null <<EOF
+tee /usr/local/etc/xray/config.json >/dev/null <<EOF
 {
   "log": {
     "loglevel": "warning"
@@ -271,15 +271,15 @@ tee /usr/local/etc/xray/config.json > /dev/null <<EOF
 }
 EOF
 
-systemctl enable xray &> /dev/null
-systemctl restart xray &> /dev/null
+systemctl enable xray &>/dev/null
+systemctl restart xray &>/dev/null
 sleep 2
 
 systemctl is-active --quiet xray && ok "Xray is running" || warn "Xray failed to start"
 
 step "Setting up policy routing for tproxy"
 
-tee "/etc/systemd/system/xray-routing.service" > /dev/null <<EOF
+tee "/etc/systemd/system/xray-routing.service" >/dev/null <<EOF
 [Unit]
 Description=Xray TProxy policy routing (pi-proxy-bridge)
 After=network.target
@@ -294,9 +294,9 @@ RemainAfterExit=yes
 WantedBy=multi-user.target
 EOF
 
-systemctl daemon-reload &> /dev/null
-systemctl enable xray-routing &> /dev/null
-systemctl start xray-routing &> /dev/null
+systemctl daemon-reload &>/dev/null
+systemctl enable xray-routing &>/dev/null
+systemctl start xray-routing &>/dev/null
 sleep 2
 
 ok "Policy routing applied"
@@ -321,7 +321,7 @@ iptables -t mangle -A XRAY -p tcp -j TPROXY --on-port 12345 --tproxy-mark 1
 iptables -t mangle -A XRAY -p udp -j TPROXY --on-port 12345 --tproxy-mark 1
 iptables -t mangle -A PREROUTING -j XRAY
 
-netfilter-persistent save &> /dev/null
+netfilter-persistent save &>/dev/null
 
 ok "iptables rules set up"
 

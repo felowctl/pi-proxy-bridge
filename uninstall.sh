@@ -8,12 +8,12 @@ if [ "$EUID" -ne 0 ]; then
 fi
 
 
-step() { echo -e "\n\033[1;34m==> $1\033[0m"; }
+step() { echo -e "\033[1;34m==> $1\033[0m"; }
 ok()   { echo -e "\033[1;32m[OK] $1\033[0m"; }
 
 
 step "Stopping services"
-systemctl disable --now hostapd dnsmasq wlan1-static-ip xray xray-routing || true
+systemctl disable --now hostapd dnsmasq wlan1-static-ip xray xray-routing &>/dev/null || true
 
 step "Removing custom systemd units"
 rm -f /etc/systemd/system/wlan1-static-ip.service
@@ -39,3 +39,4 @@ systemctl restart NetworkManager 2>/dev/null || true
 echo
 ok "Uninstall complete."
 echo "Note: hostapd, dnsmasq and xray packages were left installed."
+echo ""
