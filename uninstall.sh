@@ -11,7 +11,7 @@ fi
 step() { echo -e "\033[1;34m==> $1\033[0m"; }
 ok()   { echo -e "\033[1;32m[OK] $1\033[0m"; }
 
-
+echo ""
 step "Stopping services"
 systemctl disable --now hostapd dnsmasq wlan1-static-ip xray xray-routing &>/dev/null || true
 
