@@ -42,7 +42,7 @@ EOF
 systemctl restart NetworkManager > /dev/null
 sleep 5
 
-ok "NetworkManager will no longer manager wlan1"
+ok "NetworkManager will no longer manage wlan1"
 
 step "Writing hostapd.conf"
 
@@ -116,7 +116,9 @@ step "Starting hostapd and dnsmasq"
 
 systemctl daemon-reload &> /dev/null
 systemctl enable hostapd dnsmasq wlan1-static-ip &> /dev/null
-systemctl start hostapd dnsmasq wlan1-static-ip &> /dev/null
+systemctl start wlan1-static-ip
+sleep 2
+systemctl start hostapd dnsmasq &> /dev/null
 sleep 2
 
 ok "Hotspot is running"
@@ -132,11 +134,45 @@ fi
 
 step "Writing Xray config"
 
-read -p "Enter trojan address " TROJAN_ADDRESS
-read -p "Enter trojan port " TROJAN_PORT
-read -p "Enter trojan password " TROJAN_PASSWORD
-read -p "Enter trojan sni " TROJAN_SNI
-read -p "Enter trojan fingerprint " TROJAN_FINGERPRINT
+read -p "Paste your trojan:// link: " TROJAN_LINK
+ 
+if [[ ! "$TROJAN_LINK" =~ ^trojan:// ]]; then
+  echo "It is not a valid trojan:// link" >&2
+  exit 1
+fi
+
+LINK_BODY="${TROJAN_LINK#trojan://}"
+
+REMARK=""
+if [[ "$LINK_BODY" == *"#"* ]]; then
+  REMARK="${LINK_BODY#*#}"
+  LINK_BODY="${LINK_BODY%%#*}"
+fi
+
+QUERY=""
+if [[ "$LINK_BODY" == *"?"* ]]; then
+  QUERY="${LINK_BODY#*\?}"
+  LINK_BODY="${LINK_BODY%%\?*}"
+fi
+
+
+TROJAN_PASSWORD="${LINK_BODY%%@*}"
+HOST_PORT="${LINK_BODY#*@}"
+TROJAN_ADDRESS="${HOST_PORT%%:*}"
+TROJAN_PORT="${HOST_PORT##*:}"
+
+declare -A PARAMS
+if [[ -n "$QUERY" ]]; then
+  IFS='&' read -ra PAIRS <<< "$QUERY"
+  for pair in "${PAIRS[@]}"; do
+    key="${pair%%=*}"
+    value="${pair#*=}"
+    PARAMS["$key"]="$value"
+  done
+fi
+
+TROJAN_SNI="${PARAMS[sni]:-$TROJAN_ADDRESS}"
+TROJAN_FINGERPRINT="${PARAMS[fp]:-chrome}"
 
 tee /usr/local/etc/xray/config.json > /dev/null <<EOF
 {
@@ -204,8 +240,8 @@ tee /usr/local/etc/xray/config.json > /dev/null <<EOF
 }
 EOF
 
-sudo systemctl enable xray &> /dev/null
-sudo systemctl restart xray &> /dev/null
+systemctl enable xray &> /dev/null
+systemctl restart xray &> /dev/null
 sleep 2
 
 systemctl is-active --quiet xray && ok "Xray is running" || warn "Xray failed to start"
@@ -236,6 +272,7 @@ ok "Policy routing applied"
 
 step "Setting up iptables rules"
 
+iptables -t mangle -F XRAY 2>/dev/null || true
 iptables -t mangle -N XRAY
 iptables -t mangle -A XRAY -d 10.0.0.0/8 -j RETURN
 iptables -t mangle -A XRAY -d 100.64.0.0/10 -j RETURN
