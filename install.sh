@@ -78,7 +78,7 @@ if ! ip link show "$AP_IFACE" &>/dev/null; then
   echo "     This forces the hotspot onto the same channel as your home WiFi"
   echo "     connection, and roughly halves available bandwidth."
   echo
-  read -p "Continue anyway with a single-interface virtual AP setup? [y/N] " -n 1 -r
+  read -p "Continue anyway with a single-interface virtual AP setup? [Y/n] " -n 1 -r
   echo
   
   if [[ ! $REPLY =~ ^[Yy]$ ]]; then
@@ -209,8 +209,8 @@ ok "IP forwarding enabled"
 step "Starting hostapd and dnsmasq"
 
 systemctl daemon-reload &>/dev/null
-systemctl enable hostapd dnsmasq wlan1-static-ip &>/dev/null
-systemctl start wlan1-static-ip
+systemctl enable hostapd dnsmasq "$AP_IFACE-static-ip" &>/dev/null
+systemctl start "$AP_IFACE"-static-ip
 sleep 2
 systemctl start hostapd dnsmasq &>/dev/null
 sleep 2
