@@ -1,7 +1,5 @@
 #!/bin/bash
 
-# Installation script for pi-proxy-bridge. Requires two separate wifi interfaces
-
 set -e
 
 if [ "$EUID" -ne 0 ]; then
@@ -10,37 +8,23 @@ if [ "$EUID" -ne 0 ]; then
 fi
 
 
-step() { echo -e "\n\033[1;34m==> $1\033[0m"; }
+step() { echo -e "\033[1;34m==> $1\033[0m"; }
 warn() { echo -e "\033[1;33m[WARN] $1\033[0m" >&2; }
 ok()   { echo -e "\033[1;32m[OK] $1\033[0m"; }
 
 
-CLIENT_IFACE="wlan0"
-AP_IFACE="wlan1"
-HOTSPOT_SUBNET="192.168.2"
-AP_IP="$HOTSPOT_SUBNET.1"
-DHCP_RANGE_START="$HOTSPOT_SUBNET.10"
-DHCP_RANGE_END="$HOTSPOT_SUBNET.10"
-
-SSID="PiRouter"
-WPA_PASSPHRASE="qwerty123"
-COUNTRY_CODE="RU"
-CHANNEL=6
-
-XRAY_TPROXY_PORT=12345
-
-
-printf "\033[1;34m"
-cat <<'EOF'
-                                          
+echo -e "\033[1;34m"
+cat <<'EOF'                                   
  _____ _    _____                    _____     _   _         
 |  _  |_|  |  _  |___ ___ _ _ _ _   | __  |___|_|_| |___ ___ 
 |   __| |  |   __|  _| . |_'_| | |  | __ -|  _| | . | . | -_|
 |__|  |_|  |__|  |_| |___|_,_|_  |  |_____|_| |_|___|_  |___|
                              |___|                  |___|    
 EOF
-printf "\033[0m"
+echo -e "\033[0m"
 
+
+# ============================================================
 
 REQUIRED_PACKAGES="hostapd dnsmasq iptables iptables-persistent"
 MISSING_PACKAGES=""
@@ -52,48 +36,108 @@ for pkg in $REQUIRED_PACKAGES; do
 done
 
 if [ -n "$MISSING_PACKAGES" ]; then
-  echo
   warn "Missing required packages. Install them with:"
   warn "  sudo apt install$MISSING_PACKAGES"
   exit 1
 fi
 
-
-if ! ip link show "$CLIENT_IFACE" &>/dev/null; then
-  echo
-  warn "$CLIENT_IFACE not found"
+if ! ip link show "wlan0" &>/dev/null; then
+  warn "wlan0 not found"
   exit 1
 fi
 
-if ! ip link show "$AP_IFACE" &>/dev/null; then
-  echo
-  warn "$AP_IFACE not found"
-  echo
-  echo "This project works best with two separate WiFi radios (one for connecting"
-  echo "to your router, one for broadcasting the hotspot). With only one, you have"
-  echo "two options:"
-  echo
-  echo "  1. Plug in a USB WiFi dongle and re-run this script (recommended)."
-  echo "  2. Continue with a single virtual interface (uap0) on your existing radio."
-  echo "     This forces the hotspot onto the same channel as your home WiFi"
-  echo "     connection, and roughly halves available bandwidth."
-  echo
-  read -p "Continue anyway with a single-interface virtual AP setup? [Y/n] " -n 1 -r
-  echo
-  
-  if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-    echo "Aborted. Plug in a second WiFi adapter and re-run."
-    exit 1
-  fi
+# ============================================================
 
-  warn "Proceeding with single-interface virtual AP (uap0)"
-  AP_IFACE="uap0"
+ip link show wlan1 &>/dev/null && WLAN1_FOUND=true || WLAN1_FOUND=false
+
+step "Choose your installation type"
+echo
+
+echo -e "  \033[1;32m1)\033[0m Virtual interface (uap0) — single radio"
+echo -e "     No extra hardware needed."
+echo -e "     Shares your router's channel, ~half bandwidth."
+echo
+
+if [ "$WLAN1_FOUND" = false ]; then
+  echo -e "  \033[38;5;240m2)\033[0m \033[38;5;240mTwo separate interfaces (wlan0 + wlan1)\033[0m \033[1;31m[wlan1 not found]\033[0m"
+  echo -e "     \033[38;5;240mRequires a USB WiFi dongle.\033[0m"
+  echo -e "     \033[38;5;240mNo channel/speed restrictions.\033[0m"
+else
+  echo -e "  \033[1;32m2)\033[0m Two separate interfaces (wlan0 + wlan1)"
+  echo -e "     Requires a USB WiFi dongle."
+  echo -e "     No channel/speed restrictions."
 fi
+echo
 
+while true; do
+  read -p "$(echo -e '\033[1;33mWhich option do you choose? [1/2] \033[0m')" -r INSTALL_CHOICE
 
-systemctl unmask hostapd &>/dev/null
+  if [ "$INSTALL_CHOICE" = "1" ]; then
+    AP_IFACE="uap0"
+    break
+  elif [ "$INSTALL_CHOICE" = "2" ]; then
+    if [ "$WLAN1_FOUND" = true ]; then
+      AP_IFACE="wlan1"
+      break
+    fi 
+
+    warn "Not available."
+  fi
+  
+  echo
+done
+echo
+
+# ============================================================
+
+step "Configuration"
+echo "Press Enter to accept the default shown in [brackets], or type your own value."
+echo
+
+read -p "Hotspot SSID [PiRouter] " -r SSID
+read -p "Hotspot password [qwerty123] " -r WPA_PASSPHRASE
+read -p "Country code [RU] " -r COUNTRY_CODE
+if [ "$AP_IFACE" != "uap0" ]; then
+  read -p "Channel [6] " -r CHANNEL
+  read -p "Use 5Ghz? [N] " -r
+
+  if [[ "$REPLY" =~ ^[Yy]$ ]]; then
+    HW_MODE="a"
+  fi
+fi
+echo
+
+SSID="${SSID:-PiRouter}"
+WPA_PASSPHRASE="${WPA_PASSPHRASE:-qwerty123}"
+COUNTRY_CODE="${COUNTRY_CODE:-RU}"
+CHANNEL="${CHANNEL:-6}"
+HW_MODE="${HW_MODE:-g}" # g = 2.4Ghz   a = 5Ghz
+
+read -p "Proceed with these settings? [Y/n] " -r
+if [[ ! "$REPLY" =~ ^[Yy]$ ]]; then
+  echo "Aborted."
+  exit 1
+fi
+echo
+
+CLIENT_IFACE="wlan0"
+HOTSPOT_SUBNET="192.168.2"
+AP_IP="$HOTSPOT_SUBNET.1"
+DHCP_RANGE_START="$HOTSPOT_SUBNET.10"
+DHCP_RANGE_END="$HOTSPOT_SUBNET.50"
+XRAY_TPROXY_PORT=12345
+
+# ============================================================
+
+step "Stopping hostapd and dnsmasq"
+
+systemctl unmask hostapd >/dev/null
 systemctl stop hostapd dnsmasq >/dev/null
 
+ok "Services stopped."
+echo
+
+# ============================================================
 
 step "Unmanaging $AP_IFACE in NetworkManager"
 
@@ -104,47 +148,66 @@ EOF
 systemctl restart NetworkManager >/dev/null
 sleep 5
 
-ok "NetworkManager will no longer manage $AP_IFACE"
+ok "NetworkManager will no longer manage $AP_IFACE."
+echo
 
+# ============================================================
 
 if [ "$AP_IFACE" = "uap0" ]; then
-  step "Creating virtual AP interface $AP_IFACE on top of $CLIENT_IFACE"
+  step "Creating virtual AP interface $AP_IFACE"
 
   if ! iw dev | grep -q "$AP_IFACE"; then
-    iw dev "$CLIENT_IFACE" interface add "$AP_IFACE" type __ap
-    ok "$AP_IFACE created"
+    iw dev "$CLIENT_IFACE" interface add "$AP_IFACE" type __ap >/dev/null
+    ok "$AP_IFACE created."
   else
-    ok "$AP_IFACE already exists"
+    ok "$AP_IFACE already exists."
   fi
 
-  DETECTED_CHANNEL=$(iw dev "$CLIENT_IFACE" link 2>/dev/null | grep -oP '(?<=freq: )\d+' | head -1)
-  if [[ -n "$DETECTED_CHANNEL" ]]; then
-    if (( DETECTED_CHANNEL >= 2412 && DETECTED_CHANNEL <= 2484 )); then
-      CHANNEL=$(( (DETECTED_CHANNEL - 2407) / 5 ))
-      ok "Detected $CLIENT_IFACE is on channel $CHANNEL. Using the same channel for $AP_IFACE"
-    else
-      warn "Client is on a non-2.4GHz channel. Please change to a 2.4GHz-only network"
-      exit 1
-    fi
-  else
-    warn "Could not detect $CLIENT_IFACE's current channel. Connect to your WiFi and re-run this script"
+  FREQ=$(iw dev "$CLIENT_IFACE" link 2>/dev/null | grep -oP '(?<=freq: )\d+' | head -1)
+  if [[ -z "$FREQ" ]]; then
+    warn "Could not detect $CLIENT_IFACE's current channel. Connect to your WiFi and re-run this script."
     exit 1
   fi
-fi
 
+  if (( FREQ >= 2412 && FREQ <= 2484 )); then
+    HW_MODE="g"
+    if (( freq == 2484 )); then
+      CHANNEL=14
+    else
+      CHANNEL=$(( (FREQ - 2407) / 5 ))
+    fi
+  elif (( FREQ >= 5180 && FREQ <= 5825 )); then
+    HW_MODE="a"
+    CHANNEL=$(( (FREQ - 5000) / 5 ))
+  else
+    warn "Unknown frequency on $CLIENT_IFACE."
+    exit 1
+  fi
+
+  ok "Detected $CLIENT_IFACE on channel $CHANNEL. Using the same channel for $AP_IFACE."
+fi
+echo
+
+# ============================================================
 
 step "Writing hostapd.conf"
+
+if [ "$AP_IFACE" = "wlan1" ]; then
+  HT_CAPAB="[HT40+][SHORT-GI-20][SHORT-GI-40][MAX-AMSDU-7935]"
+fi
+
+HT_CAPAB="${HT_CAPAB:-[HT40+]}"
 
 tee /etc/hostapd/hostapd.conf >/dev/null <<EOF
 interface=$AP_IFACE
 driver=nl80211
 ssid=$SSID
-hw_mode=g
+hw_mode=$HW_MODE
 channel=$CHANNEL
 ieee80211d=1
 ieee80211n=1
 ieee80211ac=1
-ieee80211ax=1
+ht_capab=$HT_CAPAB
 wmm_enabled=1
 country_code=$COUNTRY_CODE
 macaddr_acl=0
@@ -156,8 +219,22 @@ wpa_key_mgmt=WPA-PSK
 rsn_pairwise=CCMP
 EOF
 
-ok "hostapd.conf written"
+ok "hostapd.conf written."
+echo
 
+# ============================================================
+
+step "Writing dnsmasq.conf"
+
+tee /etc/dnsmasq.conf >/dev/null <<EOF
+interface=$AP_IFACE
+dhcp-range=$DHCP_RANGE_START,$DHCP_RANGE_END,12h
+EOF
+
+ok "dnsmasq.conf written."
+echo
+
+# ============================================================
 
 step "Creating static IP systemd service for $AP_IFACE"
 
@@ -176,18 +253,10 @@ ExecStart=/sbin/ip link set $AP_IFACE up
 WantedBy=multi-user.target
 EOF
 
-ok "Static IP set on $AP_IFACE"
+ok "Systemd unit created."
+echo
 
-
-step "Writing dnsmasq.conf"
-
-tee /etc/dnsmasq.conf >/dev/null <<EOF
-interface=$AP_IFACE
-dhcp-range=$DHCP_RANGE_START,$DHCP_RANGE_END,12h
-EOF
-
-ok "dnsmasq.conf written"
-
+# ============================================================
 
 step "Enabling IP forwarding"
 
@@ -196,8 +265,10 @@ net.ipv4.ip_forward=1
 EOF
 sysctl --system > /dev/null
 
-ok "IP forwarding enabled"
+ok "IP forwarding enabled."
+echo
 
+# ============================================================
 
 # iptables -t nat -A POSTROUTING -o wlan0 -j MASQUERADE >/dev/null
 # iptables -A FORWARD -i wlan1 -o wlan0 -m state --state RELATED,ESTABLISHED -j ACCEPT >/dev/null
@@ -205,34 +276,45 @@ ok "IP forwarding enabled"
 # 
 # netfilter-persistent save >/dev/null
 
+# ============================================================
 
 step "Starting hostapd and dnsmasq"
 
 systemctl daemon-reload &>/dev/null
 systemctl enable hostapd dnsmasq "$AP_IFACE-static-ip" &>/dev/null
-systemctl start "$AP_IFACE"-static-ip
+systemctl start "$AP_IFACE"-static-ip >/dev/null
 sleep 2
-systemctl start hostapd dnsmasq &>/dev/null
+systemctl start hostapd dnsmasq >/dev/null
 sleep 2
 
-ok "Hotspot is running"
+if systemctl is-active --quiet hostapd; then
+  ok "hostapd is running."
+else
+  warn "hostapd failed to start. Debug with: sudo hostapd -dd /etc/hostapd/hostapd.conf"
+  warn "Change configuration and re-run this script."
+  exit 1
+fi
+echo
 
+# ============================================================
 
 step "Installing Xray"
 
 if command -v xray &>/dev/null; then
-  ok "Xray is already installed ($(xray version | head -1 | awk '{print $2}')), skipping install"
+  ok "Xray is already installed ($(xray version | head -1 | awk '{print $2}')), skipping install."
 else
   bash -c "$(curl --retry 3 --retry-delay 5 --max-time 20 -fsSL https://github.com/XTLS/Xray-install/raw/main/install-release.sh)" @ install
 
   if ! command -v xray &>/dev/null; then
-    warn "Xray installation failed"
+    warn "Xray installation failed."
     exit 1
   fi
 
-  ok "Xray installed successfully"
+  ok "Xray installed successfully."
 fi
+echo
 
+# ============================================================
 
 step "Writing Xray config"
 
@@ -347,10 +429,12 @@ systemctl enable xray &>/dev/null
 systemctl restart xray &>/dev/null
 sleep 2
 
-systemctl is-active --quiet xray && ok "Xray is running" || warn "Xray failed to start"
+systemctl is-active --quiet xray && ok "Xray is running." || warn "Xray failed to start."
+echo
 
+# ============================================================
 
-step "Setting up policy routing for tproxy"
+step "Setting up policy routing for Xray"
 
 tee "/etc/systemd/system/xray-routing.service" >/dev/null <<EOF
 [Unit]
@@ -372,8 +456,15 @@ systemctl enable xray-routing &>/dev/null
 systemctl start xray-routing &>/dev/null
 sleep 2
 
-ok "Policy routing applied"
+if systemctl is-active --quiet xray-routing; then
+  ok "Policy routing applied."
+else
+  warn "Policy routing didn't apply."
+  exit 1
+fi
+echo
 
+# ============================================================
 
 step "Setting up iptables rules"
 
@@ -397,7 +488,7 @@ iptables -t mangle -A PREROUTING -j XRAY
 
 netfilter-persistent save &>/dev/null
 
-ok "iptables rules set up"
+ok "iptables rules set up."
 
 echo
 ok "pi-proxy-bridge installed."
