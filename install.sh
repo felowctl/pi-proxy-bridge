@@ -95,7 +95,7 @@ echo "Press Enter to accept the default shown in [brackets], or type your own va
 echo
 
 read -p "Hotspot SSID [PiRouter] " -r SSID
-read -p "Hotspot password [qwerty123] " -r WPA_PASSPHRASE
+read -p "Hotspot password [12345678] " -r WPA_PASSPHRASE
 read -p "Country code [RU] " -r COUNTRY_CODE
 if [ "$AP_IFACE" != "uap0" ]; then
   read -p "Channel [6] " -r CHANNEL
@@ -108,7 +108,7 @@ fi
 echo
 
 SSID="${SSID:-PiRouter}"
-WPA_PASSPHRASE="${WPA_PASSPHRASE:-qwerty123}"
+WPA_PASSPHRASE="${WPA_PASSPHRASE:-12345678}"
 COUNTRY_CODE="${COUNTRY_CODE:-RU}"
 CHANNEL="${CHANNEL:-6}"
 HW_MODE="${HW_MODE:-g}" # g = 2.4Ghz   a = 5Ghz
@@ -121,7 +121,7 @@ fi
 echo
 
 CLIENT_IFACE="wlan0"
-HOTSPOT_SUBNET="192.168.2"
+HOTSPOT_SUBNET="192.168.50"
 AP_IP="$HOTSPOT_SUBNET.1"
 DHCP_RANGE_START="$HOTSPOT_SUBNET.10"
 DHCP_RANGE_END="$HOTSPOT_SUBNET.50"
