@@ -96,7 +96,7 @@ echo
 
 read -p "Hotspot SSID [PiRouter] " -r SSID
 read -p "Hotspot password [12345678] " -r WPA_PASSPHRASE
-read -p "Country code [RU] " -r COUNTRY_CODE
+read -p "Country code [US] " -r COUNTRY_CODE
 if [ "$AP_IFACE" != "uap0" ]; then
   read -p "Channel [6] " -r CHANNEL
   read -p "Use 5Ghz? [N] " -r
@@ -109,7 +109,7 @@ echo
 
 SSID="${SSID:-PiRouter}"
 WPA_PASSPHRASE="${WPA_PASSPHRASE:-12345678}"
-COUNTRY_CODE="${COUNTRY_CODE:-RU}"
+COUNTRY_CODE="${COUNTRY_CODE:-US}"
 CHANNEL="${CHANNEL:-6}"
 HW_MODE="${HW_MODE:-g}" # g = 2.4Ghz   a = 5Ghz
 
@@ -306,7 +306,8 @@ else
   bash -c "$(curl --retry 3 --retry-delay 5 --max-time 20 -fsSL https://github.com/XTLS/Xray-install/raw/main/install-release.sh)" @ install
 
   if ! command -v xray &>/dev/null; then
-    warn "Xray installation failed."
+    warn "Xray installation failed. Try installing it with:"
+    warn '  bash -c "$(curl -L https://github.com/XTLS/Xray-install/raw/main/install-release.sh)" @ install'
     exit 1
   fi
 
