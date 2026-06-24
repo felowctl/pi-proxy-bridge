@@ -495,7 +495,7 @@ echo
 # ============================================================
 
 step "Setting up Web UI"
-cp ./webui /opt/
+cp -r ./webui /opt/
 tee "/etc/systemd/system/webui.service" >/dev/null <<EOF
 [Unit]
 Description=PiRouter Web UI (pi-proxy-bridge)
