@@ -217,10 +217,9 @@ fi
 
 HT_CAPAB="${HT_CAPAB:-[HT40+]}"
 
+IEEE80211AC_LINE=""
 if [ "$HW_MODE" = "a" ]; then
-  IEEE80211AC=1
-else
-  IEEE80211AC=0
+  IEEE80211AC_LINE="ieee80211ac=1"
 fi
 
 tee /etc/hostapd/hostapd.conf >/dev/null <<EOF
@@ -231,7 +230,7 @@ hw_mode=$HW_MODE
 channel=$CHANNEL
 ieee80211d=1
 ieee80211n=1
-ieee80211ac=$IEEE80211AC
+$IEEE80211AC_LINE
 ht_capab=$HT_CAPAB
 wmm_enabled=1
 country_code=$COUNTRY_CODE
@@ -243,6 +242,8 @@ wpa_passphrase=$WPA_PASSPHRASE
 wpa_key_mgmt=WPA-PSK
 rsn_pairwise=CCMP
 EOF
+
+sed -i '/^$/d' /etc/hostapd/hostapd.conf
 
 ok "hostapd.conf written."
 echo
