@@ -57,10 +57,11 @@
             <label>WPA2 Passphrase (leave blank to keep current)</label>
             <input name="password" minlength="8" maxlength="63" placeholder="8-63 characters">
           </div>
+          {% if hotspot_interface != 'uap0' %}
           <div class="field-row">
             <div>
               <label>Channel</label>
-              <select name="channel" id="channel-select" {% if hotspot_interface=='uap0' %}disabled{% endif %}></select>
+              <select name="channel" id="channel-select"></select>
             </div>
             <div>
               <label>Width</label>
@@ -70,6 +71,7 @@
               </select>
             </div>
           </div>
+          {% endif %}
           <button type="submit" class="action full">Save &amp; Restart hostapd</button>
           <div id="hotspot-msg" class="msg"></div>
         </form>
@@ -137,12 +139,12 @@
             <div class="muted">turn off to send all traffic direct</div>
           </div>
           <label class="switch">
-            <input type="checkbox" id="proxy-enabled-toggle" onchange="toggleProxyEnabled(this)">
+            <input type="checkbox" id="proxy-enabled-toggle" onchange="toggleProxyEnabled(this)" {{ 'checked' if proxy_enabled else '' }}>
             <span class="slider"></span>
           </label>
         </div>
 
-        <div id="proxy-extra-settings" style="margin-top:22px;">
+        <div id="proxy-extra-settings" style="margin-top:22px; display:{{ 'block' if proxy_enabled else 'none' }};">
 
           <div class="switch-row">
             <div>

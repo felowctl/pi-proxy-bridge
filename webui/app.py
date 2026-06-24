@@ -220,15 +220,16 @@ def get_hotspot_settings():
 
 
 def set_hotspot(ssid, password, channel, width):
-    """channel is None when the AP runs on uap0 -- its channel is locked to
-    whatever channel the Pi's own WiFi connection is using, so it isn't
-    user-editable and the existing value in hostapd.conf is left untouched."""
+    """channel and width are None when the AP runs on uap0 -- both are
+    locked to whatever the Pi's own WiFi connection is using, so they
+    aren't user-editable and the existing hostapd.conf values are left
+    untouched."""
     if not (1 <= len(ssid) <= 32):
         return False, "SSID must be 1-32 characters"
     if password and not (8 <= len(password) <= 63):
         return False, "WPA2 passphrase must be 8-63 characters"
 
-    if width not in ("20", "40"):
+    if width is not None and width not in ("20", "40"):
         return False, "Width must be 20 or 40"
 
     try:
@@ -236,9 +237,10 @@ def set_hotspot(ssid, password, channel, width):
     except OSError as exc:
         return False, f"could not read hostapd.conf: {exc}"
 
+    hw_mode_match = re.search(r"^hw_mode=(.*)$", text, re.MULTILINE)
+    hw_mode = hw_mode_match.group(1).strip() if hw_mode_match else "g"
+
     if channel is not None:
-        hw_mode_match = re.search(r"^hw_mode=(.*)$", text, re.MULTILINE)
-        hw_mode = hw_mode_match.group(1).strip() if hw_mode_match else "g"
         valid_channels = CHANNELS_5GHZ if hw_mode == "a" else CHANNELS_24GHZ
 
         try:
@@ -271,16 +273,22 @@ def set_hotspot(ssid, password, channel, width):
         channel_match = re.search(r"^channel=(\d+)$", text, re.MULTILINE)
         channel = int(channel_match.group(1)) if channel_match else 1
 
-    ht40_token = "" if width == "20" else ("[HT40+]" if channel <= 5 else "[HT40-]")
+    if width is not None:
+        if width == "20":
+            ht40_token = ""
+        elif hw_mode == "a":
+            ht40_token = "[HT40+]"
+        else:
+            ht40_token = "[HT40+]" if channel <= 5 else "[HT40-]"
 
-    def toggle_ht40(match):
-        line = re.sub(r"\[HT40[+-]\]", "", match.group(0))
-        return line + ht40_token
+        def toggle_ht40(match):
+            line = re.sub(r"\[HT40[+-]\]", "", match.group(0))
+            return line + ht40_token
 
-    if re.search(r"^ht_capab=.*$", text, re.MULTILINE):
-        text = re.sub(r"^ht_capab=.*$", toggle_ht40, text, flags=re.MULTILINE)
-    elif ht40_token:
-        text += f"\nht_capab={ht40_token}\n"
+        if re.search(r"^ht_capab=.*$", text, re.MULTILINE):
+            text = re.sub(r"^ht_capab=.*$", toggle_ht40, text, flags=re.MULTILINE)
+        elif ht40_token:
+            text += f"\nht_capab={ht40_token}\n"
 
     try:
         HOSTAPD_CONF.write_text(text)
@@ -383,6 +391,18 @@ def sync_hotspot_channel_to_wifi():
 
     text = re.sub(r"^hw_mode=.*$", f"hw_mode={hw_mode}", text, flags=re.MULTILINE)
     text = re.sub(r"^channel=.*$", f"channel={channel}", text, flags=re.MULTILINE)
+
+    if re.search(r"^ht_capab=.*$", text, re.MULTILINE) and "[HT40" in text:
+        if hw_mode == "a":
+            ht40_token = "[HT40+]"
+        else:
+            ht40_token = "[HT40+]" if channel <= 5 else "[HT40-]"
+        text = re.sub(
+            r"^ht_capab=.*$",
+            lambda m: re.sub(r"\[HT40[+-]\]", "", m.group(0)) + ht40_token,
+            text,
+            flags=re.MULTILINE,
+        )
 
     try:
         HOSTAPD_CONF.write_text(text)
@@ -805,6 +825,7 @@ def index():
         wifi_interface=WIFI_INTERFACE,
         hotspot=get_hotspot_settings(),
         proxy=get_proxy_settings(),
+        proxy_enabled=get_proxy_enabled_status(),
         country_code=get_country_code(),
     )
 
@@ -823,8 +844,9 @@ def api_status():
 def api_hotspot():
     ssid = request.form.get("ssid", "").strip()
     password = request.form.get("password", "").strip()
-    width = request.form.get("width", "").strip()
-    channel = None if get_hotspot_interface() == "uap0" else request.form.get("channel", "").strip()
+    is_uap0 = get_hotspot_interface() == "uap0"
+    channel = None if is_uap0 else request.form.get("channel", "").strip()
+    width = None if is_uap0 else request.form.get("width", "").strip()
     ok, message = set_hotspot(ssid, password, channel, width)
     return jsonify({"ok": ok, "message": message}), (200 if ok else 400)
 
