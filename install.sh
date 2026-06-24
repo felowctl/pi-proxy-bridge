@@ -175,6 +175,7 @@ EOF
 
     sudo systemctl daemon-reload &>/dev/null
     sudo systemctl enable "$AP_IFACE-create.service" &>/dev/null
+    sudo systemctl start "$AP_IFACE-create.service" &>/dev/null
 
     ok "$AP_IFACE created."
   else
