@@ -22,8 +22,7 @@ app.secret_key = secrets.token_hex(32)
 app.config.update(SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE="Lax")
 
 
-AP_INTERFACE = "wlan1"
-CLIENT_INTERFACE = "wlan0"
+WIFI_INTERFACE = "wlan0"
 BIND_HOST = "192.168.50.1"
 BIND_PORT = 80
 HOSTAPD_CONF = Path("/etc/hostapd/hostapd.conf")
@@ -65,8 +64,19 @@ def get_xray_status():
     return {"running": state == "active", "state": state}
 
 
+def get_hotspot_interface():
+    """The AP/hotspot interface depends on which install option was chosen
+    (uap0 or wlan1), so it is read from hostapd.conf rather than assumed."""
+    try:
+        text = read_hostapd_conf()
+    except OSError:
+        return None
+    match = re.search(r"^interface=(.*)$", text, re.MULTILINE)
+    return match.group(1).strip() if match else None
+
+
 def get_bandwidth():
-    ok, out, err = run_cmd(["vnstat", "-i", AP_INTERFACE, "--json"])
+    ok, out, err = run_cmd(["vnstat", "-i", get_hotspot_interface(), "--json"])
     if not ok:
         return {"error": err or "vnstat unavailable"}
     try:
@@ -174,7 +184,7 @@ def set_admin_password(old_password, new_password):
     return True, "Password updated"
 
 
-def get_wifi_settings():
+def get_hotspot_settings():
     try:
         text = read_hostapd_conf()
     except OSError as exc:
@@ -192,7 +202,7 @@ def get_wifi_settings():
     }
 
 
-def set_wifi_all(ssid, password, channel, width):
+def set_hotspot(ssid, password, channel, width):
     if not (1 <= len(ssid) <= 32):
         return False, "SSID must be 1-32 characters"
     if password and not (8 <= len(password) <= 63):
@@ -251,7 +261,7 @@ def set_wifi_all(ssid, password, channel, width):
     ok, _, err = systemctl("restart", HOSTAPD_SERVICE)
     if not ok:
         return False, f"hostapd.conf updated but restart failed: {err}"
-    return True, "WiFi settings updated and hostapd restarted"
+    return True, "Hotspot settings updated and hostapd restarted"
 
 
 def get_connected_devices():
@@ -259,7 +269,7 @@ def get_connected_devices():
     device actually on the LAN right now'), then fill in hostnames from
     dnsmasq's lease file where available by matching MAC."""
     devices = {}
-    ok, out, _ = run_cmd(["arp", "-i", AP_INTERFACE, "-a"])
+    ok, out, _ = run_cmd(["arp", "-i", get_hotspot_interface(), "-a"])
     if ok:
         for line in out.splitlines():
             arp_match = re.search(r"\(([\d.]+)\)\s+at\s+([0-9a-fA-F:]+)", line)
@@ -288,21 +298,21 @@ def get_connected_devices():
     return sorted(devices.values(), key=lambda d: (d["ip"], d["mac"]))
 
 
-def get_wlan0_status():
+def get_wifi_status():
     ok, out, err = run_cmd(["nmcli", "-t", "-f", "DEVICE,STATE,CONNECTION", "device", "status"])
     if not ok:
         return {"state": "unknown", "ssid": None, "error": err or "nmcli unavailable"}
     for line in out.splitlines():
         parts = line.split(":")
-        if len(parts) >= 3 and parts[0] == CLIENT_INTERFACE:
+        if len(parts) >= 3 and parts[0] == WIFI_INTERFACE:
             return {"state": parts[1], "ssid": parts[2] or None}
     return {"state": "not found", "ssid": None}
 
 
 def scan_wifi_networks():
-    run_cmd(["sudo", "nmcli", "device", "wifi", "rescan", "ifname", CLIENT_INTERFACE], timeout=10)
+    run_cmd(["sudo", "nmcli", "device", "wifi", "rescan", "ifname", WIFI_INTERFACE], timeout=10)
     time.sleep(2)
-    ok, out, _ = run_cmd(["nmcli", "-t", "-f", "SSID", "device", "wifi", "list", "ifname", CLIENT_INTERFACE])
+    ok, out, _ = run_cmd(["nmcli", "-t", "-f", "SSID", "device", "wifi", "list", "ifname", WIFI_INTERFACE])
     if not ok:
         return []
     seen = []
@@ -313,25 +323,25 @@ def scan_wifi_networks():
     return seen
 
 
-def connect_wlan0(ssid, password):
+def connect_wifi(ssid, password):
     if not (1 <= len(ssid) <= 32):
         return False, "SSID must be 1-32 characters"
     if password and not (8 <= len(password) <= 63):
         return False, "WPA2 passphrase must be 8-63 characters"
 
-    run_cmd(["sudo", "nmcli", "device", "wifi", "rescan", "ifname", CLIENT_INTERFACE], timeout=10)
+    run_cmd(["sudo", "nmcli", "device", "wifi", "rescan", "ifname", WIFI_INTERFACE], timeout=10)
     time.sleep(3)
 
     run_cmd(["sudo", "nmcli", "connection", "delete", ssid], timeout=10)
 
-    cmd = ["sudo", "nmcli", "device", "wifi", "connect", ssid, "ifname", CLIENT_INTERFACE]
+    cmd = ["sudo", "nmcli", "device", "wifi", "connect", ssid, "ifname", WIFI_INTERFACE]
     if password:
         cmd += ["password", password]
 
     ok, _, err = run_cmd(cmd, timeout=30)
     if not ok:
-        return False, err or f"could not connect {CLIENT_INTERFACE} to '{ssid}'"
-    return True, f"{CLIENT_INTERFACE} connected to '{ssid}'"
+        return False, err or f"could not connect {WIFI_INTERFACE} to '{ssid}'"
+    return True, f"{WIFI_INTERFACE} connected to '{ssid}'"
 
 
 def read_xray_config():
@@ -703,9 +713,9 @@ def logout():
 def index():
     return render_template(
         "index.html",
-        ap_interface=AP_INTERFACE,
-        client_interface=CLIENT_INTERFACE,
-        wifi=get_wifi_settings(),
+        hotspot_interface=get_hotspot_interface(),
+        wifi_interface=WIFI_INTERFACE,
+        hotspot=get_hotspot_settings(),
         proxy=get_proxy_settings(),
     )
 
@@ -720,13 +730,13 @@ def api_status():
     )
 
 
-@app.route("/api/wifi", methods=["POST"])
-def api_wifi():
+@app.route("/api/hotspot", methods=["POST"])
+def api_hotspot():
     ssid = request.form.get("ssid", "").strip()
     password = request.form.get("password", "").strip()
     channel = request.form.get("channel", "").strip()
     width = request.form.get("width", "").strip()
-    ok, message = set_wifi_all(ssid, password, channel, width)
+    ok, message = set_hotspot(ssid, password, channel, width)
     return jsonify({"ok": ok, "message": message}), (200 if ok else 400)
 
 
@@ -735,21 +745,21 @@ def api_devices():
     return jsonify({"devices": get_connected_devices()})
 
 
-@app.route("/api/wlan0/status")
-def api_wlan0_status():
-    return jsonify(get_wlan0_status())
+@app.route("/api/wifi/status")
+def api_wifi_status():
+    return jsonify(get_wifi_status())
 
 
-@app.route("/api/wlan0/networks")
-def api_wlan0_networks():
+@app.route("/api/wifi/networks")
+def api_wifi_networks():
     return jsonify({"networks": scan_wifi_networks()})
 
 
-@app.route("/api/wlan0/connect", methods=["POST"])
-def api_wlan0_connect():
+@app.route("/api/wifi/connect", methods=["POST"])
+def api_wifi_connect():
     ssid = request.form.get("ssid", "").strip()
     password = request.form.get("password", "").strip()
-    ok, message = connect_wlan0(ssid, password)
+    ok, message = connect_wifi(ssid, password)
     return jsonify({"ok": ok, "message": message}), (200 if ok else 400)
 
 

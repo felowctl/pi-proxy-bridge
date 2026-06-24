@@ -22,19 +22,19 @@
 
     <div class="pane active" id="pane-settings">
 
-      <div class="panel" id="panel-wlan0">
-        <h2>Pi's Own WiFi Connection ({{ client_interface }})</h2>
+      <div class="panel" id="panel-wifi">
+        <h2>Pi's Own WiFi Connection ({{ wifi_interface }})</h2>
         <div style="margin-bottom:18px;">
-          <span id="wlan0-badge" class="badge off wlan0-ssid-big">unknown</span>
+          <span id="wifi-badge" class="badge off wifi-ssid-big">unknown</span>
         </div>
-        <form onsubmit="connectWlan0(event)">
+        <form onsubmit="connectWifi(event)">
           <div>
             <label>Network SSID</label>
-            <select name="ssid" id="wlan0-ssid-select" onchange="onWlan0SsidChange()">
+            <select name="ssid" id="wifi-ssid-select" onchange="onWifiSsidChange()">
               <option value="">Scanning…</option>
               <option value="__other__">Other (enter manually)…</option>
             </select>
-            <input type="text" id="wlan0-ssid-manual" maxlength="32" placeholder="SSID"
+            <input type="text" id="wifi-ssid-manual" maxlength="32" placeholder="SSID"
               style="display:none; margin-top:8px;">
           </div>
           <div>
@@ -42,16 +42,16 @@
             <input name="password" minlength="8" maxlength="63" placeholder="8-63 characters">
           </div>
           <button type="submit" class="action full">Connect</button>
-          <div id="wlan0-msg" class="msg"></div>
+          <div id="wifi-msg" class="msg"></div>
         </form>
       </div>
 
-      <div class="panel" id="panel-wlan1">
-        <h2>Hotspot WiFi ({{ ap_interface }})</h2>
-        <form onsubmit="saveWifi(event)">
+      <div class="panel" id="panel-hotspot">
+        <h2>Hotspot WiFi ({{ hotspot_interface }})</h2>
+        <form onsubmit="saveHotspot(event)">
           <div>
             <label>SSID</label>
-            <input type="text" name="ssid" maxlength="32" value="{{ wifi.ssid }}" required>
+            <input type="text" name="ssid" maxlength="32" value="{{ hotspot.ssid }}" required>
           </div>
           <div>
             <label>WPA2 Passphrase (leave blank to keep current)</label>
@@ -65,13 +65,13 @@
             <div>
               <label>Width</label>
               <select name="width" id="width-select">
-                <option value="20" {{ 'selected' if wifi.width=='20' else '' }}>20 MHz</option>
-                <option value="40" {{ 'selected' if wifi.width=='40' else '' }}>40 MHz</option>
+                <option value="20" {{ 'selected' if hotspot.width=='20' else '' }}>20 MHz</option>
+                <option value="40" {{ 'selected' if hotspot.width=='40' else '' }}>40 MHz</option>
               </select>
             </div>
           </div>
           <button type="submit" class="action full">Save &amp; Restart hostapd</button>
-          <div id="wifi-msg" class="msg"></div>
+          <div id="hotspot-msg" class="msg"></div>
         </form>
       </div>
 
@@ -109,7 +109,7 @@
     <div class="pane" id="pane-client">
 
       <div class="panel" id="panel-devices">
-        <h2>Connected Devices ({{ ap_interface }})</h2>
+        <h2>Connected Devices ({{ hotspot_interface }})</h2>
         <table>
           <thead>
             <tr>
@@ -197,7 +197,7 @@
   </div>
 
   <script>
-    const WIFI_CHANNEL = {{ wifi.channel|default (1) }};
+    const HOTSPOT_CHANNEL = {{ hotspot.channel|default (1) }};
 
     function applyTheme(theme) {
       document.documentElement.dataset.theme = theme;
@@ -247,14 +247,14 @@
       }
     }
 
-    async function saveWifi(ev) {
+    async function saveHotspot(ev) {
       ev.preventDefault();
       const btn = ev.submitter || ev.target.querySelector('button[type="submit"]');
       const form = new FormData(ev.target);
       await withLoading(btn, 'Saving…', async () => {
-        const res = await fetch('/api/wifi', { method: 'POST', body: form });
+        const res = await fetch('/api/hotspot', { method: 'POST', body: form });
         const data = await res.json();
-        setMsg(document.getElementById('wifi-msg'), data.message, data.ok);
+        setMsg(document.getElementById('hotspot-msg'), data.message, data.ok);
       });
     }
 
@@ -270,19 +270,19 @@
       }
     }
 
-    async function loadWlan0Status() {
-      const badge = document.getElementById('wlan0-badge');
-      const res = await fetch('/api/wlan0/status');
+    async function loadWifiStatus() {
+      const badge = document.getElementById('wifi-badge');
+      const res = await fetch('/api/wifi/status');
       const data = await res.json();
-      badge.className = 'badge wlan0-ssid-big ' + (data.state === 'connected' ? 'on' : 'off');
+      badge.className = 'badge wifi-ssid-big ' + (data.state === 'connected' ? 'on' : 'off');
       badge.textContent = data.ssid ? `Connected to "${data.ssid}"` : data.state;
     }
 
     async function loadWifiNetworks() {
-      const select = document.getElementById('wlan0-ssid-select');
+      const select = document.getElementById('wifi-ssid-select');
       let networks = [];
       try {
-        const res = await fetch('/api/wlan0/networks');
+        const res = await fetch('/api/wifi/networks');
         const data = await res.json();
         networks = data.networks || [];
       } catch (e) {
@@ -301,31 +301,31 @@
       select.appendChild(other);
       if (!networks.length) {
         select.value = '__other__';
-        onWlan0SsidChange();
+        onWifiSsidChange();
       }
     }
 
-    function onWlan0SsidChange() {
-      const select = document.getElementById('wlan0-ssid-select');
-      const manual = document.getElementById('wlan0-ssid-manual');
+    function onWifiSsidChange() {
+      const select = document.getElementById('wifi-ssid-select');
+      const manual = document.getElementById('wifi-ssid-manual');
       const isOther = select.value === '__other__';
       manual.style.display = isOther ? 'block' : 'none';
       manual.required = isOther;
     }
 
-    async function connectWlan0(ev) {
+    async function connectWifi(ev) {
       ev.preventDefault();
       const btn = ev.submitter || ev.target.querySelector('button[type="submit"]');
-      const select = document.getElementById('wlan0-ssid-select');
+      const select = document.getElementById('wifi-ssid-select');
       const form = new FormData(ev.target);
       form.set('ssid', select.value === '__other__'
-        ? document.getElementById('wlan0-ssid-manual').value.trim()
+        ? document.getElementById('wifi-ssid-manual').value.trim()
         : select.value);
       await withLoading(btn, 'Connecting…', async () => {
-        const res = await fetch('/api/wlan0/connect', { method: 'POST', body: form });
+        const res = await fetch('/api/wifi/connect', { method: 'POST', body: form });
         const data = await res.json();
-        setMsg(document.getElementById('wlan0-msg'), data.message, data.ok);
-        if (data.ok) loadWlan0Status();
+        setMsg(document.getElementById('wifi-msg'), data.message, data.ok);
+        if (data.ok) loadWifiStatus();
       });
     }
 
@@ -510,8 +510,8 @@
       });
     }
 
-    populateChannelOptions(WIFI_CHANNEL);
-    loadWlan0Status();
+    populateChannelOptions(HOTSPOT_CHANNEL);
+    loadWifiStatus();
     loadWifiNetworks();
     loadDevices();
   </script>
