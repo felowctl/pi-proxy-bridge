@@ -26,7 +26,7 @@ echo -e "\033[0m"
 
 # ============================================================
 
-REQUIRED_PACKAGES="hostapd dnsmasq iptables iptables-persistent"
+REQUIRED_PACKAGES="hostapd dnsmasq iptables iptables-persistent python3-flask"
 MISSING_PACKAGES=""
 
 for pkg in $REQUIRED_PACKAGES; do
@@ -490,7 +490,34 @@ iptables -t mangle -A PREROUTING -j XRAY
 netfilter-persistent save &>/dev/null
 
 ok "iptables rules set up."
-
 echo
+
+# ============================================================
+
+step "Setting up Web UI"
+cp ./webui /opt/
+tee "/etc/systemd/system/webui.service" >/dev/null <<EOF
+[Unit]
+Description=PiRouter Web UI (pi-proxy-bridge)
+After=network.target hostapd.service xray.service
+ 
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/webui
+ExecStart=/usr/bin/python3 /opt/webui/app.py
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+EOF
+systemctl enable webui &>/dev/null
+systemctl start webui
+ok "Web UI is ready and can be accessed on http://$AP_IP"
+echo
+
+# ============================================================
+
 ok "pi-proxy-bridge installed."
 echo

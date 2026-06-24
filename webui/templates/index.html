@@ -1,0 +1,520 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pi Hotspot</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+
+<body>
+
+  <button id="theme-toggle" onclick="toggleTheme()" title="Toggle light/dark theme">🌙</button>
+
+  <div class="tabs">
+    <button class="tab-btn active" data-tab="settings">Settings</button>
+    <button class="tab-btn" data-tab="client">Clients</button>
+    <button class="tab-btn" data-tab="proxy">Proxies</button>
+  </div>
+
+  <div class="tab-content">
+
+    <div class="pane active" id="pane-settings">
+
+      <div class="panel" id="panel-wlan0">
+        <h2>Pi's Own WiFi Connection ({{ client_interface }})</h2>
+        <div style="margin-bottom:18px;">
+          <span id="wlan0-badge" class="badge off wlan0-ssid-big">unknown</span>
+        </div>
+        <form onsubmit="connectWlan0(event)">
+          <div>
+            <label>Network SSID</label>
+            <select name="ssid" id="wlan0-ssid-select" onchange="onWlan0SsidChange()">
+              <option value="">Scanning…</option>
+              <option value="__other__">Other (enter manually)…</option>
+            </select>
+            <input type="text" id="wlan0-ssid-manual" maxlength="32" placeholder="SSID"
+              style="display:none; margin-top:8px;">
+          </div>
+          <div>
+            <label>Password (leave blank for an open network)</label>
+            <input name="password" minlength="8" maxlength="63" placeholder="8-63 characters">
+          </div>
+          <button type="submit" class="action full">Connect</button>
+          <div id="wlan0-msg" class="msg"></div>
+        </form>
+      </div>
+
+      <div class="panel" id="panel-wlan1">
+        <h2>Hotspot WiFi ({{ ap_interface }})</h2>
+        <form onsubmit="saveWifi(event)">
+          <div>
+            <label>SSID</label>
+            <input type="text" name="ssid" maxlength="32" value="{{ wifi.ssid }}" required>
+          </div>
+          <div>
+            <label>WPA2 Passphrase (leave blank to keep current)</label>
+            <input name="password" minlength="8" maxlength="63" placeholder="8-63 characters">
+          </div>
+          <div class="field-row">
+            <div>
+              <label>Channel</label>
+              <select name="channel" id="channel-select"></select>
+            </div>
+            <div>
+              <label>Width</label>
+              <select name="width" id="width-select">
+                <option value="20" {{ 'selected' if wifi.width=='20' else '' }}>20 MHz</option>
+                <option value="40" {{ 'selected' if wifi.width=='40' else '' }}>40 MHz</option>
+              </select>
+            </div>
+          </div>
+          <button type="submit" class="action full">Save &amp; Restart hostapd</button>
+          <div id="wifi-msg" class="msg"></div>
+        </form>
+      </div>
+
+      <div class="panel" id="panel-system">
+        <h2>System</h2>
+
+        <h2 style="margin-top:0;">Change Login Password</h2>
+        <form onsubmit="changePassword(event)">
+          <div>
+            <label>Current password</label>
+            <input name="old_password" required>
+          </div>
+          <div>
+            <label>New password</label>
+            <input name="new_password" id="new-password" minlength="8" maxlength="63" placeholder="8-63 characters"
+              required>
+          </div>
+          <div>
+            <label>Confirm new password</label>
+            <input name="new_password_confirm" id="new-password-confirm" minlength="8" maxlength="63"
+              placeholder="8-63 characters" required>
+          </div>
+          <button type="submit" class="action full">Change Password</button>
+          <div id="password-msg" class="msg"></div>
+        </form>
+
+        <div class="row" style="margin-top:14px;">
+          <button class="action danger full" style="flex:1;" onclick="rebootPi(this)">Reboot Pi</button>
+          <button class="action success full" style="flex:1;" onclick="logoutNow(this)">Logout</button>
+        </div>
+      </div>
+
+    </div>
+
+    <div class="pane" id="pane-client">
+
+      <div class="panel" id="panel-devices">
+        <h2>Connected Devices ({{ ap_interface }})</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>IP</th>
+              <th>Hostname</th>
+              <th>MAC</th>
+            </tr>
+          </thead>
+          <tbody id="devices-tbody">
+            <tr>
+              <td colspan="3" class="muted">Loading…</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+    </div>
+
+    <div class="pane" id="pane-proxy">
+      <div class="panel">
+
+        <div class="switch-row" style="margin-bottom:0;">
+          <div>
+            <div style="font-weight:600; font-size:14px;">Enable proxy</div>
+            <div class="muted">turn off to send all traffic direct</div>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="proxy-enabled-toggle" onchange="toggleProxyEnabled(this)">
+            <span class="slider"></span>
+          </label>
+        </div>
+
+        <div id="proxy-extra-settings" style="margin-top:22px;">
+
+          <div class="switch-row">
+            <div>
+              <div style="font-weight:600; font-size:14px;">Bypass Russian sites</div>
+              <div class="muted">geosite:ru / geoip:ru skip the proxy</div>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="geo-toggle" onchange="toggleGeoBypass(this)">
+              <span class="slider"></span>
+            </label>
+          </div>
+
+          <h2>Active Proxy</h2>
+          <div id="active-proxy-box" class="stack" style="margin-bottom:28px;">
+            <div class="proxy-card active-card">
+              <div>
+                <div class="name">{{ proxy.name or 'None' }}</div>
+                <div class="muted proto">Protocol: {{ proxy.protocol or '-' }}</div>
+              </div>
+              <span class="badge on">active</span>
+            </div>
+          </div>
+
+          <details class="spoiler">
+            <summary><span class="spoiler-arrow">▶</span> Available Proxies (config.txt)</summary>
+            <div id="proxy-list" class="stack">
+              <span class="muted">Loading…</span>
+            </div>
+          </details>
+          <div id="proxy-msg" class="msg" style="margin-top:10px;"></div>
+
+          <div style="margin-top:24px; padding-top:20px; border-top:1px solid var(--divider);">
+            <h2>Import config.txt from URL</h2>
+            <form onsubmit="importProxyConfig(event)">
+              <div>
+                <label>Config URL (plain text or base64-encoded)</label>
+                <input type="text" name="url" placeholder="https://example.com/config.txt" required>
+              </div>
+              <button type="submit" class="action full">Load Config</button>
+              <div id="import-msg" class="msg"></div>
+            </form>
+            <button class="action danger full" style="margin-top:10px;" onclick="deleteProxyConfig(this)">Delete Current
+              Config</button>
+            <div id="delete-config-msg" class="msg" style="margin-top:10px;"></div>
+          </div>
+
+        </div>
+
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    const WIFI_CHANNEL = {{ wifi.channel|default (1) }};
+
+    function applyTheme(theme) {
+      document.documentElement.dataset.theme = theme;
+      document.getElementById('theme-toggle').textContent = theme === 'dark' ? '☀️' : '🌙';
+    }
+
+    function toggleTheme() {
+      const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+      localStorage.setItem('theme', next);
+      applyTheme(next);
+    }
+
+    applyTheme(localStorage.getItem('theme')
+      || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'));
+
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.pane').forEach(p => p.classList.remove('active'));
+        btn.classList.add('active');
+        document.getElementById('pane-' + btn.dataset.tab).classList.add('active');
+        if (btn.dataset.tab === 'proxy') { loadActiveProxy(); loadProxyList(); loadGeoStatus(); loadProxyEnabledStatus(); }
+      });
+    });
+
+    function setMsg(el, text, ok) {
+      clearTimeout(el._clearTimer);
+      el.textContent = text;
+      el.className = 'msg ' + (ok ? 'ok' : 'err');
+      if (text) {
+        el._clearTimer = setTimeout(() => {
+          el.textContent = '';
+          el.className = 'msg';
+        }, 4000);
+      }
+    }
+
+    async function withLoading(btn, label, fn) {
+      const original = btn.textContent;
+      btn.disabled = true;
+      btn.textContent = label;
+      try {
+        await fn();
+      } finally {
+        btn.disabled = false;
+        btn.textContent = original;
+      }
+    }
+
+    async function saveWifi(ev) {
+      ev.preventDefault();
+      const btn = ev.submitter || ev.target.querySelector('button[type="submit"]');
+      const form = new FormData(ev.target);
+      await withLoading(btn, 'Saving…', async () => {
+        const res = await fetch('/api/wifi', { method: 'POST', body: form });
+        const data = await res.json();
+        setMsg(document.getElementById('wifi-msg'), data.message, data.ok);
+      });
+    }
+
+    function populateChannelOptions(selected) {
+      const select = document.getElementById('channel-select');
+      select.innerHTML = '';
+      for (let ch = 1; ch <= 13; ch++) {
+        const opt = document.createElement('option');
+        opt.value = ch;
+        opt.textContent = ch;
+        if (ch === selected) opt.selected = true;
+        select.appendChild(opt);
+      }
+    }
+
+    async function loadWlan0Status() {
+      const badge = document.getElementById('wlan0-badge');
+      const res = await fetch('/api/wlan0/status');
+      const data = await res.json();
+      badge.className = 'badge wlan0-ssid-big ' + (data.state === 'connected' ? 'on' : 'off');
+      badge.textContent = data.ssid ? `Connected to "${data.ssid}"` : data.state;
+    }
+
+    async function loadWifiNetworks() {
+      const select = document.getElementById('wlan0-ssid-select');
+      let networks = [];
+      try {
+        const res = await fetch('/api/wlan0/networks');
+        const data = await res.json();
+        networks = data.networks || [];
+      } catch (e) {
+        networks = [];
+      }
+      select.innerHTML = '';
+      networks.forEach(ssid => {
+        const opt = document.createElement('option');
+        opt.value = ssid;
+        opt.textContent = ssid;
+        select.appendChild(opt);
+      });
+      const other = document.createElement('option');
+      other.value = '__other__';
+      other.textContent = 'Other (enter manually)…';
+      select.appendChild(other);
+      if (!networks.length) {
+        select.value = '__other__';
+        onWlan0SsidChange();
+      }
+    }
+
+    function onWlan0SsidChange() {
+      const select = document.getElementById('wlan0-ssid-select');
+      const manual = document.getElementById('wlan0-ssid-manual');
+      const isOther = select.value === '__other__';
+      manual.style.display = isOther ? 'block' : 'none';
+      manual.required = isOther;
+    }
+
+    async function connectWlan0(ev) {
+      ev.preventDefault();
+      const btn = ev.submitter || ev.target.querySelector('button[type="submit"]');
+      const select = document.getElementById('wlan0-ssid-select');
+      const form = new FormData(ev.target);
+      form.set('ssid', select.value === '__other__'
+        ? document.getElementById('wlan0-ssid-manual').value.trim()
+        : select.value);
+      await withLoading(btn, 'Connecting…', async () => {
+        const res = await fetch('/api/wlan0/connect', { method: 'POST', body: form });
+        const data = await res.json();
+        setMsg(document.getElementById('wlan0-msg'), data.message, data.ok);
+        if (data.ok) loadWlan0Status();
+      });
+    }
+
+    async function changePassword(ev) {
+      ev.preventDefault();
+      const msg = document.getElementById('password-msg');
+      if (document.getElementById('new-password').value !== document.getElementById('new-password-confirm').value) {
+        setMsg(msg, 'New password fields do not match', false);
+        return;
+      }
+      const btn = ev.submitter || ev.target.querySelector('button[type="submit"]');
+      const form = new FormData(ev.target);
+      await withLoading(btn, 'Saving…', async () => {
+        const res = await fetch('/api/account/password', { method: 'POST', body: form });
+        const data = await res.json();
+        setMsg(msg, data.message, data.ok);
+        if (data.ok) window.location.href = '/login';
+      });
+    }
+
+    function setProxyExtraSettingsVisible(visible) {
+      document.getElementById('proxy-extra-settings').style.display = visible ? 'block' : 'none';
+    }
+
+    async function loadProxyEnabledStatus() {
+      const toggle = document.getElementById('proxy-enabled-toggle');
+      const res = await fetch('/api/proxy/enabled');
+      const data = await res.json();
+      toggle.checked = !!data.enabled;
+      setProxyExtraSettingsVisible(toggle.checked);
+    }
+
+    async function toggleProxyEnabled(checkbox) {
+      const enabled = checkbox.checked;
+      checkbox.disabled = true;
+      try {
+        const form = new FormData();
+        form.append('enabled', enabled ? 'true' : 'false');
+        const res = await fetch('/api/proxy/enabled/toggle', { method: 'POST', body: form });
+        const data = await res.json();
+        if (!data.ok) checkbox.checked = !enabled;
+        setProxyExtraSettingsVisible(checkbox.checked);
+      } finally {
+        checkbox.disabled = false;
+      }
+    }
+
+    async function loadGeoStatus() {
+      const toggle = document.getElementById('geo-toggle');
+      const res = await fetch('/api/geo/status');
+      const data = await res.json();
+      toggle.checked = !!data.enabled;
+    }
+
+    async function toggleGeoBypass(checkbox) {
+      const enabled = checkbox.checked;
+      checkbox.disabled = true;
+      try {
+        const form = new FormData();
+        form.append('enabled', enabled ? 'true' : 'false');
+        const res = await fetch('/api/geo/toggle', { method: 'POST', body: form });
+        const data = await res.json();
+        if (!data.ok) checkbox.checked = !enabled;
+      } finally {
+        checkbox.disabled = false;
+      }
+    }
+
+    async function loadActiveProxy() {
+      const box = document.getElementById('active-proxy-box');
+      const res = await fetch('/api/proxy/active');
+      const data = await res.json();
+      box.innerHTML = `
+    <div class="proxy-card active-card">
+      <div>
+        <div class="name">${data.name || 'None'}</div>
+        <div class="muted proto">Protocol: ${data.protocol || '-'}</div>
+      </div>
+      <span class="badge on">active</span>
+    </div>`;
+    }
+
+    function pingLabel(ms) {
+      if (ms === null || ms === undefined) return '<span class="badge off">unreachable</span>';
+      return `<span class="badge on">${ms} ms</span>`;
+    }
+
+    async function loadProxyList() {
+      const list = document.getElementById('proxy-list');
+      list.innerHTML = '<span class="muted">Loading…</span>';
+      const res = await fetch('/api/proxies');
+      const data = await res.json();
+      if (!data.proxies.length) {
+        list.innerHTML = '<span class="muted">No trojan:// or vless:// entries found in config.txt</span>';
+        return;
+      }
+      list.innerHTML = data.proxies.map(p => `
+    <div class="proxy-card">
+      <div>
+        <div class="name">${p.name}</div>
+        <div class="muted">${p.protocol}</div>
+      </div>
+      <div class="row">
+        ${pingLabel(p.ping_ms)}
+        <button class="action" onclick="applyProxy(this)" data-key="${p.key}">Apply</button>
+      </div>
+    </div>`).join('');
+    }
+
+    async function applyProxy(btn) {
+      const key = btn.dataset.key;
+      const form = new FormData();
+      form.append('key', key);
+      await withLoading(btn, 'Applying…', async () => {
+        const res = await fetch('/api/proxy/apply', { method: 'POST', body: form });
+        const data = await res.json();
+        setMsg(document.getElementById('proxy-msg'), data.message, data.ok);
+        if (data.ok) {
+          loadActiveProxy();
+          loadProxyList();
+        }
+      });
+    }
+
+    async function rebootPi(btn) {
+      if (!confirm('Reboot the Raspberry Pi now?')) return;
+      await withLoading(btn, 'Rebooting…', async () => {
+        await fetch('/api/reboot', { method: 'POST' });
+        alert('Reboot command sent.');
+      });
+    }
+
+    async function logoutNow(btn) {
+      await withLoading(btn, 'Logging out…', async () => {
+        await fetch('/logout', { method: 'POST' });
+        window.location.href = '/login';
+      });
+    }
+
+    async function loadDevices() {
+      const tbody = document.getElementById('devices-tbody');
+      const res = await fetch('/api/devices');
+      const data = await res.json();
+      if (!data.devices.length) {
+        tbody.innerHTML = '<tr><td colspan="3" class="muted">No devices connected</td></tr>';
+        return;
+      }
+      tbody.innerHTML = data.devices.map(d => `
+    <tr>
+      <td>${d.ip || '-'}</td>
+      <td>${d.hostname || '-'}</td>
+      <td>${d.mac}</td>
+    </tr>`).join('');
+    }
+
+    async function importProxyConfig(ev) {
+      ev.preventDefault();
+      const btn = ev.submitter || ev.target.querySelector('button[type="submit"]');
+      const form = new FormData(ev.target);
+      await withLoading(btn, 'Loading…', async () => {
+        const res = await fetch('/api/proxies/import', { method: 'POST', body: form });
+        const data = await res.json();
+        setMsg(document.getElementById('import-msg'), data.message, data.ok);
+        if (data.ok) {
+          ev.target.reset();
+          loadActiveProxy();
+          loadProxyList();
+        }
+      });
+    }
+
+    async function deleteProxyConfig(btn) {
+      if (!confirm('Delete the current config.txt? This removes all saved proxies.')) return;
+      await withLoading(btn, 'Deleting…', async () => {
+        const res = await fetch('/api/proxies/delete', { method: 'POST' });
+        const data = await res.json();
+        setMsg(document.getElementById('delete-config-msg'), data.message, data.ok);
+        if (data.ok) {
+          loadActiveProxy();
+          loadProxyList();
+        }
+      });
+    }
+
+    populateChannelOptions(WIFI_CHANNEL);
+    loadWlan0Status();
+    loadWifiNetworks();
+    loadDevices();
+  </script>
+</body>
+
+</html>

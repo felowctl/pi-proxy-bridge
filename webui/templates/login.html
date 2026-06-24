@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Login - Pi Hotspot</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='login.css') }}">
+</head>
+
+<body>
+  <button id="theme-toggle" onclick="toggleTheme()" title="Toggle light/dark theme">🌙</button>
+  <div class="panel">
+    <h1>Pi Hotspot Admin</h1>
+    <form method="POST">
+      <div>
+        <label>Password</label>
+        <input type="password" name="password" autofocus required>
+      </div>
+      {% if error %}<div class="error">{{ error }}</div>{% endif %}
+      <button type="submit">Log in</button>
+    </form>
+  </div>
+  <script>
+    function applyTheme(theme) {
+      document.documentElement.dataset.theme = theme;
+      document.getElementById('theme-toggle').textContent = theme === 'dark' ? '☀️' : '🌙';
+    }
+    function toggleTheme() {
+      const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+      localStorage.setItem('theme', next);
+      applyTheme(next);
+    }
+    applyTheme(localStorage.getItem('theme')
+      || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'));
+  </script>
+</body>
+
+</html>

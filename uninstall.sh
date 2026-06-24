@@ -28,7 +28,7 @@ echo
 
 step "Stopping services"
 
-systemctl disable --now hostapd dnsmasq xray xray-routing &>/dev/null || true
+systemctl disable --now hostapd dnsmasq xray xray-routing webui &>/dev/null || true
 
 if [ -n "$AP_IFACE" ]; then
   systemctl disable --now "${AP_IFACE}-static-ip" &>/dev/null || true
@@ -42,6 +42,7 @@ step "Removing systemd units"
 rm -f /etc/systemd/system/wlan1-static-ip.service
 rm -f /etc/systemd/system/uap0-static-ip.service
 rm -f /etc/systemd/system/xray-routing.service
+rm -f /etc/systemd/system/webui.service
 systemctl daemon-reload &>/dev/null
 
 ok "Systemd units removed."
