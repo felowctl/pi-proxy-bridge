@@ -115,6 +115,15 @@ def read_hostapd_conf():
     return HOSTAPD_CONF.read_text()
 
 
+def get_country_code():
+    try:
+        text = read_hostapd_conf()
+    except OSError:
+        return None
+    match = re.search(r"^country_code=(.*)$", text, re.MULTILINE)
+    return match.group(1).strip().lower() if match else None
+
+
 def get_hotspot_password():
     """The panel's login password is always the hotspot's current WPA2
     passphrase, so there is no separate credential to manage or leak."""
@@ -627,9 +636,14 @@ def set_proxy_enabled(enabled):
 
 
 def _is_geo_bypass_rule(rule):
+    """Matches a geo bypass rule for any country code, not just the
+    hotspot's current one, so a stale rule still gets cleaned up if the
+    country code was changed after the rule was added."""
     if rule.get("outboundTag") != DIRECT_OUTBOUND_TAG:
         return False
-    return rule.get("domain") == ["geosite:category-ru"] or rule.get("ip") == ["geoip:ru"]
+    domain = rule.get("domain") or [""]
+    ip = rule.get("ip") or [""]
+    return bool(re.match(r"^geosite:category-\w+$", domain[0])) or bool(re.match(r"^geoip:\w+$", ip[0]))
 
 
 def get_geo_bypass_status():
@@ -647,6 +661,10 @@ def set_geo_bypass(enabled):
     except (OSError, json.JSONDecodeError) as exc:
         return False, f"could not read xray config: {exc}"
 
+    country_code = get_country_code()
+    if enabled and not country_code:
+        return False, "could not determine country code from hostapd.conf"
+
     config.setdefault("outbounds", [])
     routing = config.setdefault("routing", {})
     rules = routing.setdefault("rules", [])
@@ -658,8 +676,8 @@ def set_geo_bypass(enabled):
             config["outbounds"].append(
                 {"tag": DIRECT_OUTBOUND_TAG, "protocol": "freedom", "settings": {}}
             )
-        rules.insert(0, {"type": "field", "ip": ["geoip:ru"], "outboundTag": DIRECT_OUTBOUND_TAG})
-        rules.insert(0, {"type": "field", "domain": ["geosite:category-ru"], "outboundTag": DIRECT_OUTBOUND_TAG})
+        rules.insert(0, {"type": "field", "ip": [f"geoip:{country_code}"], "outboundTag": DIRECT_OUTBOUND_TAG})
+        rules.insert(0, {"type": "field", "domain": [f"geosite:category-{country_code}"], "outboundTag": DIRECT_OUTBOUND_TAG})
 
     try:
         XRAY_CONFIG.write_text(json.dumps(config, indent=2))
@@ -669,7 +687,9 @@ def set_geo_bypass(enabled):
     ok, _, err = systemctl("restart", XRAY_SERVICE)
     if not ok:
         return False, f"config updated but restart failed: {err}"
-    return True, ("Russian sites now bypass the proxy" if enabled else "Russia bypass disabled")
+    return True, (
+        f"{country_code.upper()} sites now bypass the proxy" if enabled else "Geo bypass disabled"
+    )
 
 
 
@@ -830,7 +850,7 @@ def api_proxy_enabled_toggle():
 
 @app.route("/api/geo/status")
 def api_geo_status():
-    return jsonify({"enabled": get_geo_bypass_status()})
+    return jsonify({"enabled": get_geo_bypass_status(), "country_code": get_country_code()})
 
 
 @app.route("/api/geo/toggle", methods=["POST"])

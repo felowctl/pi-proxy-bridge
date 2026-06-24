@@ -146,8 +146,8 @@
 
           <div class="switch-row">
             <div>
-              <div style="font-weight:600; font-size:14px;">Bypass Russian sites</div>
-              <div class="muted">geosite:ru / geoip:ru skip the proxy</div>
+              <div id="geo-label" style="font-weight:600; font-size:14px;">Bypass local websites</div>
+              <div id="geo-sublabel" class="muted">geosite / geoip skip the proxy</div>
             </div>
             <label class="switch">
               <input type="checkbox" id="geo-toggle" onchange="toggleGeoBypass(this)">
@@ -378,6 +378,11 @@
       const res = await fetch('/api/geo/status');
       const data = await res.json();
       toggle.checked = !!data.enabled;
+      if (data.country_code) {
+        const cc = data.country_code.toUpperCase();
+        document.getElementById('geo-label').textContent = `Bypass ${cc} websites`;
+        document.getElementById('geo-sublabel').textContent = `geosite:category-${data.country_code} / geoip:${data.country_code} skip the proxy`;
+      }
     }
 
     async function toggleGeoBypass(checkbox) {
