@@ -319,47 +319,6 @@ echo
 
 step "Writing Xray config"
 
-while true; do
-  read -rs -p "Paste your trojan:// link: " TROJAN_LINK
-  echo
-  
-  if [[ "$TROJAN_LINK" =~ ^trojan:// ]]; then
-    break
-  fi
-
-  warn "It is not a valid trojan:// link"
-done
-
-LINK_BODY="${TROJAN_LINK#trojan://}"
-
-if [[ "$LINK_BODY" == *"#"* ]]; then
-  LINK_BODY="${LINK_BODY%%#*}"
-fi
-
-QUERY=""
-if [[ "$LINK_BODY" == *"?"* ]]; then
-  QUERY="${LINK_BODY#*\?}"
-  LINK_BODY="${LINK_BODY%%\?*}"
-fi
-
-TROJAN_PASSWORD="${LINK_BODY%%@*}"
-HOST_PORT="${LINK_BODY#*@}"
-TROJAN_ADDRESS="${HOST_PORT%%:*}"
-TROJAN_PORT="${HOST_PORT##*:}"
-
-declare -A PARAMS
-if [[ -n "$QUERY" ]]; then
-  IFS='&' read -ra PAIRS <<< "$QUERY"
-  for pair in "${PAIRS[@]}"; do
-    key="${pair%%=*}"
-    value="${pair#*=}"
-    PARAMS["$key"]="$value"
-  done
-fi
-
-TROJAN_SNI="${PARAMS[sni]:-$TROJAN_ADDRESS}"
-TROJAN_FINGERPRINT="${PARAMS[fp]:-chrome}"
-
 tee /usr/local/etc/xray/config.json >/dev/null <<EOF
 {
   "log": {
@@ -387,27 +346,6 @@ tee /usr/local/etc/xray/config.json >/dev/null <<EOF
   ],
   "outbounds": [
     {
-      "tag": "proxy",
-      "protocol": "trojan",
-      "settings": {
-        "servers": [
-          {
-            "address": "${TROJAN_ADDRESS}",
-            "port": ${TROJAN_PORT},
-            "password": "${TROJAN_PASSWORD}"
-          }
-        ]
-      },
-      "streamSettings": {
-        "network": "tcp",
-        "security": "tls",
-        "tlsSettings": {
-          "serverName": "${TROJAN_SNI}",
-          "fingerprint": "${TROJAN_FINGERPRINT}"
-        }
-      }
-    },
-    {
       "tag": "direct",
       "protocol": "freedom",
       "settings": {}
@@ -416,6 +354,11 @@ tee /usr/local/etc/xray/config.json >/dev/null <<EOF
   "routing": {
     "domainStrategy": "AsIs",
     "rules": [
+      {
+        "type": "field",
+        "port": "0-65535",
+        "outboundTag": "direct"
+      },
       {
         "type": "field",
         "inboundTag": ["tproxy-in"],
