@@ -35,6 +35,12 @@ HOSTAPD_SERVICE = "hostapd"
 SUPPORTED_PROXY_PROTOCOLS = ("trojan", "vless")
 PROXY_OUTBOUND_TAG = "proxy"
 DIRECT_OUTBOUND_TAG = "direct"
+CHANNELS_24GHZ = list(range(1, 14))
+CHANNELS_5GHZ = [
+    36, 40, 44, 48, 52, 56, 60, 64,
+    100, 104, 108, 112, 116, 120, 124, 128, 132, 136, 140, 144,
+    149, 153, 157, 161, 165,
+]
 
 
 def run_cmd(args, timeout=15):
@@ -197,10 +203,11 @@ def get_hotspot_settings():
     try:
         text = read_hostapd_conf()
     except OSError as exc:
-        return {"ssid": "", "channel": 1, "width": "20", "error": str(exc)}
+        return {"ssid": "", "channel": 1, "width": "20", "hw_mode": "g", "error": str(exc)}
 
     ssid_match = re.search(r"^ssid=(.*)$", text, re.MULTILINE)
     channel_match = re.search(r"^channel=(\d+)$", text, re.MULTILINE)
+    hw_mode_match = re.search(r"^hw_mode=(.*)$", text, re.MULTILINE)
     ht_capab_match = re.search(r"^ht_capab=(.*)$", text, re.MULTILINE)
     ht_capab_line = ht_capab_match.group(1) if ht_capab_match else ""
 
@@ -208,6 +215,7 @@ def get_hotspot_settings():
         "ssid": ssid_match.group(1).strip() if ssid_match else "",
         "channel": int(channel_match.group(1)) if channel_match else 1,
         "width": "40" if ("[HT40-]" in ht_capab_line or "[HT40+]" in ht_capab_line) else "20",
+        "hw_mode": hw_mode_match.group(1).strip() if hw_mode_match else "g",
     }
 
 
@@ -220,15 +228,6 @@ def set_hotspot(ssid, password, channel, width):
     if password and not (8 <= len(password) <= 63):
         return False, "WPA2 passphrase must be 8-63 characters"
 
-    if channel is not None:
-        try:
-            channel = int(channel)
-        except (TypeError, ValueError):
-            return False, "Channel must be a number"
-
-        if not (1 <= channel <= 13):
-            return False, "Channel must be between 1 and 13"
-
     if width not in ("20", "40"):
         return False, "Width must be 20 or 40"
 
@@ -236,6 +235,19 @@ def set_hotspot(ssid, password, channel, width):
         text = read_hostapd_conf()
     except OSError as exc:
         return False, f"could not read hostapd.conf: {exc}"
+
+    if channel is not None:
+        hw_mode_match = re.search(r"^hw_mode=(.*)$", text, re.MULTILINE)
+        hw_mode = hw_mode_match.group(1).strip() if hw_mode_match else "g"
+        valid_channels = CHANNELS_5GHZ if hw_mode == "a" else CHANNELS_24GHZ
+
+        try:
+            channel = int(channel)
+        except (TypeError, ValueError):
+            return False, "Channel must be a number"
+
+        if channel not in valid_channels:
+            return False, f"Channel must be one of: {', '.join(map(str, valid_channels))}"
 
     if re.search(r"^ssid=.*$", text, re.MULTILINE):
         text = re.sub(r"^ssid=.*$", f"ssid={ssid}", text, flags=re.MULTILINE)
