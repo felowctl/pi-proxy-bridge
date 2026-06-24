@@ -226,7 +226,6 @@ channel=$CHANNEL
 ieee80211d=1
 ieee80211n=1
 ieee80211ac=1
-ieee80211ax=1
 ht_capab=$HT_CAPAB
 wmm_enabled=1
 country_code=$COUNTRY_CODE
