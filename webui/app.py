@@ -392,6 +392,11 @@ def sync_hotspot_channel_to_wifi():
     text = re.sub(r"^hw_mode=.*$", f"hw_mode={hw_mode}", text, flags=re.MULTILINE)
     text = re.sub(r"^channel=.*$", f"channel={channel}", text, flags=re.MULTILINE)
 
+    if re.search(r"^ieee80211ac=.*$", text, re.MULTILINE):
+        text = re.sub(
+            r"^ieee80211ac=.*$", f"ieee80211ac={1 if hw_mode == 'a' else 0}", text, flags=re.MULTILINE
+        )
+
     if re.search(r"^ht_capab=.*$", text, re.MULTILINE) and "[HT40" in text:
         if hw_mode == "a":
             ht40_token = "[HT40+]"

@@ -217,6 +217,12 @@ fi
 
 HT_CAPAB="${HT_CAPAB:-[HT40+]}"
 
+if [ "$HW_MODE" = "a" ]; then
+  IEEE80211AC=1
+else
+  IEEE80211AC=0
+fi
+
 tee /etc/hostapd/hostapd.conf >/dev/null <<EOF
 interface=$AP_IFACE
 driver=nl80211
@@ -225,7 +231,7 @@ hw_mode=$HW_MODE
 channel=$CHANNEL
 ieee80211d=1
 ieee80211n=1
-ieee80211ac=1
+ieee80211ac=$IEEE80211AC
 ht_capab=$HT_CAPAB
 wmm_enabled=1
 country_code=$COUNTRY_CODE
