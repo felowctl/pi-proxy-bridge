@@ -157,7 +157,25 @@ if [ "$AP_IFACE" = "uap0" ]; then
   step "Creating virtual AP interface $AP_IFACE"
 
   if ! iw dev | grep -q "$AP_IFACE"; then
-    iw dev "$CLIENT_IFACE" interface add "$AP_IFACE" type __ap >/dev/null
+    sudo tee "/etc/systemd/system/$AP_IFACE-create.service" >/dev/null <<EOF
+[Unit]
+Description=Create virtual AP interface $AP_IFACE (pi-proxy-bridge)
+After=sys-subsystem-net-devices-$CLIENT_IFACE.device
+Before=hostapd.service
+BindsTo=sys-subsystem-net-devices-$CLIENT_IFACE.device
+
+[Service]
+Type=oneshot
+ExecStart=/sbin/iw dev $CLIENT_IFACE interface add $AP_IFACE type __ap
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+    sudo systemctl daemon-reload &>/dev/null
+    sudo systemctl enable "$AP_IFACE-create.service" &>/dev/null
+
     ok "$AP_IFACE created."
   else
     ok "$AP_IFACE already exists."
