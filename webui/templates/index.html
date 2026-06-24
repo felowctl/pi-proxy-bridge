@@ -58,10 +58,12 @@
             <input name="password" minlength="8" maxlength="63" placeholder="8-63 characters">
           </div>
           <div class="field-row">
+            {% if hotspot_interface != 'uap0' %}
             <div>
               <label>Channel</label>
               <select name="channel" id="channel-select"></select>
             </div>
+            {% endif %}
             <div>
               <label>Width</label>
               <select name="width" id="width-select">
@@ -146,8 +148,8 @@
 
           <div class="switch-row">
             <div>
-              <div id="geo-label" style="font-weight:600; font-size:14px;">Bypass local websites</div>
-              <div id="geo-sublabel" class="muted">geosite / geoip skip the proxy</div>
+              <div id="geo-label" style="font-weight:600; font-size:14px;">Bypass {{ country_code|upper }} websites</div>
+              <div id="geo-sublabel" class="muted">geosite:category-{{ country_code }} / geoip:{{ country_code }} skip the proxy</div>
             </div>
             <label class="switch">
               <input type="checkbox" id="geo-toggle" onchange="toggleGeoBypass(this)">
@@ -260,6 +262,7 @@
 
     function populateChannelOptions(selected) {
       const select = document.getElementById('channel-select');
+      if (!select) return;
       select.innerHTML = '';
       for (let ch = 1; ch <= 13; ch++) {
         const opt = document.createElement('option');

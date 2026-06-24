@@ -212,21 +212,25 @@ def get_hotspot_settings():
 
 
 def set_hotspot(ssid, password, channel, width):
+    """channel is None when the AP runs on uap0 -- its channel is locked to
+    whatever channel the Pi's own WiFi connection is using, so it isn't
+    user-editable and the existing value in hostapd.conf is left untouched."""
     if not (1 <= len(ssid) <= 32):
         return False, "SSID must be 1-32 characters"
     if password and not (8 <= len(password) <= 63):
         return False, "WPA2 passphrase must be 8-63 characters"
 
-    try:
-        channel = int(channel)
-    except (TypeError, ValueError):
-        return False, "Channel must be a number"
+    if channel is not None:
+        try:
+            channel = int(channel)
+        except (TypeError, ValueError):
+            return False, "Channel must be a number"
+
+        if not (1 <= channel <= 13):
+            return False, "Channel must be between 1 and 13"
 
     if width not in ("20", "40"):
         return False, "Width must be 20 or 40"
-
-    if not (1 <= channel <= 13):
-        return False, "Channel must be between 1 and 13"
 
     try:
         text = read_hostapd_conf()
@@ -246,10 +250,14 @@ def set_hotspot(ssid, password, channel, width):
         else:
             text += f"\nwpa_passphrase={password}\n"
 
-    if re.search(r"^channel=.*$", text, re.MULTILINE):
-        text = re.sub(r"^channel=.*$", f"channel={channel}", text, flags=re.MULTILINE)
+    if channel is not None:
+        if re.search(r"^channel=.*$", text, re.MULTILINE):
+            text = re.sub(r"^channel=.*$", f"channel={channel}", text, flags=re.MULTILINE)
+        else:
+            text += f"\nchannel={channel}\n"
     else:
-        text += f"\nchannel={channel}\n"
+        channel_match = re.search(r"^channel=(\d+)$", text, re.MULTILINE)
+        channel = int(channel_match.group(1)) if channel_match else 1
 
     ht40_token = "" if width == "20" else ("[HT40+]" if channel <= 5 else "[HT40-]")
 
@@ -737,6 +745,7 @@ def index():
         wifi_interface=WIFI_INTERFACE,
         hotspot=get_hotspot_settings(),
         proxy=get_proxy_settings(),
+        country_code=get_country_code(),
     )
 
 
@@ -754,8 +763,8 @@ def api_status():
 def api_hotspot():
     ssid = request.form.get("ssid", "").strip()
     password = request.form.get("password", "").strip()
-    channel = request.form.get("channel", "").strip()
     width = request.form.get("width", "").strip()
+    channel = None if get_hotspot_interface() == "uap0" else request.form.get("channel", "").strip()
     ok, message = set_hotspot(ssid, password, channel, width)
     return jsonify({"ok": ok, "message": message}), (200 if ok else 400)
 
