@@ -352,6 +352,49 @@ def scan_wifi_networks():
     return seen
 
 
+def detect_wifi_channel():
+    """Mirror install.sh's frequency-to-channel detection so uap0's hostapd
+    can be kept on the same channel as the Pi's own WiFi link, since a
+    virtual AP interface shares its radio with WIFI_INTERFACE."""
+    ok, out, _ = run_cmd(["iw", "dev", WIFI_INTERFACE, "link"])
+    if not ok:
+        return None
+    freq_match = re.search(r"freq:\s*(\d+)", out)
+    if not freq_match:
+        return None
+    freq = int(freq_match.group(1))
+    if 2412 <= freq <= 2484:
+        return "g", (14 if freq == 2484 else (freq - 2407) // 5)
+    if 5180 <= freq <= 5825:
+        return "a", (freq - 5000) // 5
+    return None
+
+
+def sync_hotspot_channel_to_wifi():
+    detected = detect_wifi_channel()
+    if not detected:
+        return False, "could not detect wifi channel"
+    hw_mode, channel = detected
+
+    try:
+        text = read_hostapd_conf()
+    except OSError as exc:
+        return False, f"could not read hostapd.conf: {exc}"
+
+    text = re.sub(r"^hw_mode=.*$", f"hw_mode={hw_mode}", text, flags=re.MULTILINE)
+    text = re.sub(r"^channel=.*$", f"channel={channel}", text, flags=re.MULTILINE)
+
+    try:
+        HOSTAPD_CONF.write_text(text)
+    except OSError as exc:
+        return False, f"could not write hostapd.conf: {exc}"
+
+    ok, _, err = systemctl("restart", HOSTAPD_SERVICE)
+    if not ok:
+        return False, f"hostapd.conf updated but restart failed: {err}"
+    return True, f"hotspot channel synced to {channel}"
+
+
 def connect_wifi(ssid, password):
     if not (1 <= len(ssid) <= 32):
         return False, "SSID must be 1-32 characters"
@@ -370,6 +413,11 @@ def connect_wifi(ssid, password):
     ok, _, err = run_cmd(cmd, timeout=30)
     if not ok:
         return False, err or f"could not connect {WIFI_INTERFACE} to '{ssid}'"
+
+    if get_hotspot_interface() == "uap0":
+        time.sleep(2)
+        sync_hotspot_channel_to_wifi()
+
     return True, f"{WIFI_INTERFACE} connected to '{ssid}'"
 
 
