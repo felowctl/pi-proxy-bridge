@@ -17,7 +17,6 @@ from flask import Flask, jsonify, redirect, render_template, request, session, u
 
 app = Flask(__name__)
 
-print(app)
 app.secret_key = secrets.token_hex(32)
 app.config.update(SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE="Lax")
 
@@ -44,8 +43,6 @@ CHANNELS_5GHZ = [
 
 
 def run_cmd(args, timeout=15):
-    """Run a command (as a list, never via shell) and return
-    (success, stdout, stderr)."""
     try:
         result = subprocess.run(
             args,
@@ -70,9 +67,7 @@ def get_xray_status():
     return {"running": state == "active", "state": state}
 
 
-def get_hotspot_interface():
-    """The AP/hotspot interface depends on which install option was chosen
-    (uap0 or wlan1), so it is read from hostapd.conf rather than assumed."""
+def get_hotspot_interface()
     try:
         text = read_hostapd_conf()
     except OSError:
@@ -92,11 +87,6 @@ def get_bandwidth():
 
 
 def tcp_ping(address, port, timeout=1.5):
-    """Time a raw TCP connect to address:port and return ms, or None on
-    failure. This is what proxy clients (v2rayN, Clash, sing-box, etc.)
-    actually use for latency/reachability -- ICMP ping is unreliable here
-    because most VPS/proxy providers drop or rate-limit ICMP at the
-    firewall while still accepting TCP on the proxy port itself."""
     start = time.monotonic()
     try:
         with socket.create_connection((address, port), timeout=timeout):
@@ -107,8 +97,6 @@ def tcp_ping(address, port, timeout=1.5):
 
 
 def tcp_ping_targets(targets):
-    """Test multiple (address, port) targets concurrently instead of one
-    at a time, so a slow/unreachable host doesn't multiply the total wait."""
     targets = list(targets)
     if not targets:
         return {}
@@ -131,8 +119,6 @@ def get_country_code():
 
 
 def get_hotspot_password():
-    """The panel's login password is always the hotspot's current WPA2
-    passphrase, so there is no separate credential to manage or leak."""
     try:
         text = read_hostapd_conf()
     except OSError:
@@ -164,11 +150,6 @@ def _read_admin_password_hash():
 
 
 def ensure_admin_password_initialized():
-    """On first run, seed the persistent admin password from the hotspot's
-    current WPA2 passphrase so existing setups keep working without an
-    extra step. After that, the stored hash is authoritative -- it is not
-    re-derived from hostapd.conf, so it survives reboots and outlives any
-    later WiFi password change."""
     if ADMIN_PASSWORD_FILE.exists():
         return
     seed = "Admin"
@@ -220,10 +201,6 @@ def get_hotspot_settings():
 
 
 def set_hotspot(ssid, password, channel, width):
-    """channel and width are None when the AP runs on uap0 -- both are
-    locked to whatever the Pi's own WiFi connection is using, so they
-    aren't user-editable and the existing hostapd.conf values are left
-    untouched."""
     if not (1 <= len(ssid) <= 32):
         return False, "SSID must be 1-32 characters"
     if password and not (8 <= len(password) <= 63):
@@ -302,9 +279,6 @@ def set_hotspot(ssid, password, channel, width):
 
 
 def get_connected_devices():
-    """Get IP/MAC pairs from the kernel's ARP cache (truth for 'is this
-    device actually on the LAN right now'), then fill in hostnames from
-    dnsmasq's lease file where available by matching MAC."""
     devices = {}
     ok, out, _ = run_cmd(["arp", "-i", get_hotspot_interface(), "-a"])
     if ok:
@@ -361,9 +335,6 @@ def scan_wifi_networks():
 
 
 def detect_wifi_channel():
-    """Mirror install.sh's frequency-to-channel detection so uap0's hostapd
-    can be kept on the same channel as the Pi's own WiFi link, since a
-    virtual AP interface shares its radio with WIFI_INTERFACE."""
     ok, out, _ = run_cmd(["iw", "dev", WIFI_INTERFACE, "link"])
     if not ok:
         return None
@@ -460,11 +431,6 @@ def find_outbound_by_tag(config, tag):
 
 
 def get_proxy_settings():
-    """Read the current settings of the outbound tagged 'proxy' (the one
-    routing.rules sends tproxy-in traffic to). Its protocol is either
-    trojan or vless depending on what was last applied. The display name
-    is resolved by matching address/port against config.txt, since the
-    Xray outbound itself has no concept of a friendly name."""
     try:
         config = read_xray_config()
     except (OSError, json.JSONDecodeError) as exc:
@@ -545,8 +511,6 @@ def get_proxy_list():
 
 
 def clear_active_proxy():
-    """Remove the outbound tagged 'proxy' entirely, so get_proxy_settings()
-    reports nothing and the UI shows 'None' as the active proxy."""
     try:
         config = read_xray_config()
     except (OSError, json.JSONDecodeError) as exc:
@@ -601,30 +565,6 @@ def import_proxy_list_from_url(url):
 
 
 def apply_proxy_entry(entry):
-    """Rewrite the outbound tagged 'proxy' so it matches the expected
-    Xray config shape, e.g.:
-
-        {
-          "tag": "proxy",
-          "protocol": "trojan",
-          "settings": {"servers": [{"address": ..., "port": ..., "password": ...}]},
-          "streamSettings": {
-            "network": "tcp",
-            "security": "tls",
-            "tlsSettings": {"serverName": ..., "fingerprint": "firefox"}
-          }
-        }
-
-    or, for vless:
-
-        {
-          "tag": "proxy",
-          "protocol": "vless",
-          "settings": {"vnext": [{"address": ..., "port": ...,
-                                   "users": [{"id": ..., "encryption": "none"}]}]},
-          "streamSettings": {...same as above...}
-        }
-    """
     try:
         config = read_xray_config()
     except (OSError, json.JSONDecodeError) as exc:
@@ -731,9 +671,6 @@ def set_proxy_enabled(enabled):
 
 
 def _is_geo_bypass_rule(rule):
-    """Matches a geo bypass rule for any country code, not just the
-    hotspot's current one, so a stale rule still gets cleaned up if the
-    country code was changed after the rule was added."""
     if rule.get("outboundTag") != DIRECT_OUTBOUND_TAG:
         return False
     domain = rule.get("domain") or [""]
