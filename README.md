@@ -7,14 +7,14 @@ Raspberry Pi as a WiFi-to-WiFi hotspot with transparent proxying via Xray.
 ## Prerequisites
 
 - Raspberry Pi with a WiFi module and Raspberry Pi OS Lite 64-bit installed
-- Second USB WiFi adapter (optional)
+- Second USB WiFi adapter (optional, but highly recommended)
 
 ## Installation types
 
 The installer detects your hardware and lets you choose one of the modes:
 
 1. **Virtual interface (uap0)** uses your Pi's existing radio for both the WiFi connection and the hotspot. No extra hardware is needed, but the hotspot shares the same channel/band as your router connection and roughly halves the available bandwidth.
-2. **Two separate interfaces (wlan0 + wlan1)** uses a second USB WiFi adapter to create the hotspot. There are no channel or speed restrictions, but it requires extra hardware.
+2. **Two separate interfaces (wlan0 + wlan1)** uses a second USB WiFi adapter to create the hotspot. There are no channel or speed restrictions, but it requires extra hardware (recommended).
 
 ## Installation
 
