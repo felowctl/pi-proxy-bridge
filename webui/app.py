@@ -67,7 +67,7 @@ def get_xray_status():
     return {"running": state == "active", "state": state}
 
 
-def get_hotspot_interface()
+def get_hotspot_interface():
     try:
         text = read_hostapd_conf()
     except OSError:
