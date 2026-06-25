@@ -31,7 +31,6 @@ DNSMASQ_LEASES_FILES = (Path("/var/lib/misc/dnsmasq.leases"), Path("/etc/dnsmasq
 ADMIN_PASSWORD_FILE = Path(__file__).resolve().parent / "admin_password.hash"
 XRAY_SERVICE = "xray"
 HOSTAPD_SERVICE = "hostapd"
-SUPPORTED_PROXY_PROTOCOLS = ("trojan", "vless")
 PROXY_OUTBOUND_TAG = "proxy"
 DIRECT_OUTBOUND_TAG = "direct"
 CHANNELS_24GHZ = list(range(1, 14))
@@ -442,14 +441,8 @@ def get_proxy_settings():
 
     protocol = outbound.get("protocol")
     sni = outbound.get("streamSettings", {}).get("tlsSettings", {}).get("serverName", "")
-
-    if protocol == "trojan":
-        server = (outbound.get("settings", {}).get("servers") or [{}])[0]
-        address, port = server.get("address", ""), server.get("port", "")
-    elif protocol == "vless":
-        vnext = (outbound.get("settings", {}).get("vnext") or [{}])[0]
-        address, port = vnext.get("address", ""), vnext.get("port", "")
-    else:
+    address, port = _outbound_address_port(outbound)
+    if not address:
         return {"protocol": protocol}
 
     name = next(
@@ -469,20 +462,21 @@ def xray_knife_parse_outbound(link):
     if not ok:
         return None
     try:
-        return json.loads(out)
+        config = json.loads(out)
     except json.JSONDecodeError:
         return None
+    outbounds = config.get("outbounds") or []
+    return outbounds[0] if outbounds else None
 
 
 def _outbound_address_port(outbound):
-    protocol = outbound.get("protocol")
-    settings = outbound.get("settings", {})
-    if protocol == "trojan":
-        server = (settings.get("servers") or [{}])[0]
-        return server.get("address", ""), server.get("port", "")
-    if protocol == "vless":
-        vnext = (settings.get("vnext") or [{}])[0]
-        return vnext.get("address", ""), vnext.get("port", "")
+    settings = outbound.get("settings", {}) or {}
+    vnext = settings.get("vnext") or []
+    if vnext:
+        return vnext[0].get("address", ""), vnext[0].get("port", "")
+    servers = settings.get("servers") or []
+    if servers:
+        return servers[0].get("address", ""), servers[0].get("port", "")
     return "", ""
 
 
@@ -495,8 +489,6 @@ def parse_proxy_links(text):
 
         parsed = urlparse(line)
         protocol = parsed.scheme.lower()
-        if protocol not in SUPPORTED_PROXY_PROTOCOLS:
-            continue
 
         outbound = xray_knife_parse_outbound(line)
         if not outbound:
@@ -576,7 +568,7 @@ def import_proxy_list_from_url(url):
             text = decoded
 
     if "://" not in text:
-        return False, "fetched content doesn't look like a valid config.txt (no trojan:// or vless:// entries)"
+        return False, "fetched content doesn't look like a valid config.txt (no proxy link entries)"
 
     try:
         PROXY_LIST_FILE.write_text(text)

@@ -433,7 +433,7 @@
       const res = await fetch('/api/proxies');
       const data = await res.json();
       if (!data.proxies.length) {
-        list.innerHTML = '<span class="muted">No trojan:// or vless:// entries found in config.txt</span>';
+        list.innerHTML = '<span class="muted">No proxy entries found in config.txt</span>';
         return;
       }
       list.innerHTML = data.proxies.map(p => `
