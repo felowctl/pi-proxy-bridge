@@ -436,6 +436,18 @@ echo
 
 # ============================================================
 
+step "Downloading xray-knife"
+
+curl --retry 3 --retry-delay 5 --max-time 20 -fsSL https://github.com/lilendian0x00/xray-knife/releases/latest/download/Xray-knife-linux-arm64-v8a.zip -o xray-knife
+unzip xray-knife
+cd Xray-knife-linux
+chmod +x xray-knife
+mv xray-knife /usr/local/bin/xray-knife
+
+ok "Xray-knife installed."
+
+# ============================================================
+
 step "Setting up iptables rules"
 
 iptables -t mangle -D PREROUTING -j XRAY 2>/dev/null || true
