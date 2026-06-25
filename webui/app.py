@@ -11,7 +11,7 @@ import subprocess
 import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from urllib.parse import parse_qs, unquote, urlparse
+from urllib.parse import unquote, urlparse
 
 from flask import Flask, jsonify, redirect, render_template, request, session, url_for
 
@@ -464,6 +464,28 @@ def get_proxy_settings():
     return {"protocol": protocol, "name": name, "address": address, "port": port, "sni": sni}
 
 
+def xray_knife_parse_outbound(link):
+    ok, out, _ = run_cmd(["xray-knife", "parse", "-c", link, "--json"], timeout=15)
+    if not ok:
+        return None
+    try:
+        return json.loads(out)
+    except json.JSONDecodeError:
+        return None
+
+
+def _outbound_address_port(outbound):
+    protocol = outbound.get("protocol")
+    settings = outbound.get("settings", {})
+    if protocol == "trojan":
+        server = (settings.get("servers") or [{}])[0]
+        return server.get("address", ""), server.get("port", "")
+    if protocol == "vless":
+        vnext = (settings.get("vnext") or [{}])[0]
+        return vnext.get("address", ""), vnext.get("port", "")
+    return "", ""
+
+
 def parse_proxy_links(text):
     entries = []
     for line in text.splitlines():
@@ -475,28 +497,28 @@ def parse_proxy_links(text):
         protocol = parsed.scheme.lower()
         if protocol not in SUPPORTED_PROXY_PROTOCOLS:
             continue
-        if not parsed.hostname or not parsed.port:
+
+        outbound = xray_knife_parse_outbound(line)
+        if not outbound:
             continue
 
-        query = parse_qs(parsed.query)
-        sni = query.get("sni", [""])[0]
-        name = unquote(parsed.fragment) if parsed.fragment else f"{protocol}-{parsed.hostname}"
-        secret = unquote(parsed.username) if parsed.username else ""
+        address, port = _outbound_address_port(outbound)
+        if not address or not port:
+            continue
 
-        entry = {
-            "protocol": protocol,
-            "name": name,
-            "address": parsed.hostname,
-            "port": parsed.port,
-            "sni": sni,
-            "raw": line,
-            "key": hashlib.sha256(line.encode()).hexdigest()[:16],
-        }
-        if protocol == "trojan":
-            entry["password"] = secret
-        else:  # vless
-            entry["id"] = secret
-        entries.append(entry)
+        name = unquote(parsed.fragment) if parsed.fragment else f"{protocol}-{address}"
+
+        entries.append(
+            {
+                "protocol": protocol,
+                "name": name,
+                "address": address,
+                "port": port,
+                "raw": line,
+                "outbound": outbound,
+                "key": hashlib.sha256(line.encode()).hexdigest()[:16],
+            }
+        )
     return entries
 
 
@@ -570,45 +592,13 @@ def apply_proxy_entry(entry):
     except (OSError, json.JSONDecodeError) as exc:
         return False, f"could not read xray config: {exc}"
 
-    outbound = find_outbound_by_tag(config, PROXY_OUTBOUND_TAG)
-    if not outbound:
-        outbound = {"tag": PROXY_OUTBOUND_TAG}
-        config.setdefault("outbounds", []).append(outbound)
+    outbound = dict(entry["outbound"])
+    outbound["tag"] = PROXY_OUTBOUND_TAG
 
-    existing_tls = outbound.get("streamSettings", {}).get("tlsSettings", {})
-    fingerprint = existing_tls.get("fingerprint", "firefox")
-
-    outbound["protocol"] = entry["protocol"]
-
-    if entry["protocol"] == "trojan":
-        outbound["settings"] = {
-            "servers": [
-                {
-                    "address": entry["address"],
-                    "port": entry["port"],
-                    "password": entry["password"],
-                }
-            ]
-        }
-    else:  # vless
-        outbound["settings"] = {
-            "vnext": [
-                {
-                    "address": entry["address"],
-                    "port": entry["port"],
-                    "users": [{"id": entry["id"], "encryption": "none"}],
-                }
-            ]
-        }
-
-    outbound["streamSettings"] = {
-        "network": "tcp",
-        "security": "tls",
-        "tlsSettings": {
-            "serverName": entry.get("sni") or entry["address"],
-            "fingerprint": fingerprint,
-        },
-    }
+    config["outbounds"] = [
+        ob for ob in config.get("outbounds", []) if ob.get("tag") != PROXY_OUTBOUND_TAG
+    ]
+    config["outbounds"].append(outbound)
 
     try:
         XRAY_CONFIG.write_text(json.dumps(config, indent=2))

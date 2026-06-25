@@ -438,13 +438,15 @@ echo
 
 step "Downloading xray-knife"
 
-curl --retry 3 --retry-delay 5 --max-time 20 -fsSL https://github.com/lilendian0x00/xray-knife/releases/latest/download/Xray-knife-linux-arm64-v8a.zip -o xray-knife
-unzip xray-knife
-cd Xray-knife-linux
-chmod +x xray-knife
-mv xray-knife /usr/local/bin/xray-knife
+curl --retry 3 --retry-delay 5 --max-time 20 -fsSL https://github.com/lilendian0x00/xray-knife/releases/latest/download/Xray-knife-linux-arm64-v8a.zip -o xray-knife.zip
+unzip xray-knife.zip -d xray-knife
+chmod +x xray-knife/xray-knife
+mv xray-knife/xray-knife /usr/local/bin/xray-knife
+rm -f xray-knife.zip || true
+rm -rf xray-knife || true
 
 ok "Xray-knife installed."
+echo
 
 # ============================================================
 
