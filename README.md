@@ -27,7 +27,7 @@ sudo ./install.sh
 
 After the installation, you can access the admin page on http://192.168.50.1 (by default)
 
-> If using the dual interface mode, see [this hostapd patch](https://github.com/d2r2/upstream-hostapd-force-ht40-mode-patch).
+> If using the USB adapter, see [this hostapd patch](https://github.com/d2r2/upstream-hostapd-force-ht40-mode-patch).
 
 Tested on a Raspberry Pi 4B with a TP-Link Archer TX1U Nano and [this driver](https://github.com/Kiborgik/aic8800dc-linux-patched).
 
