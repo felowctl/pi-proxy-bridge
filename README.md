@@ -25,7 +25,7 @@ chmod +x install.sh
 sudo ./install.sh
 ```
 
-After the installation, you can access the admin page on your http://192.168.50.1 (by default)
+After the installation, you can access the admin page on http://192.168.50.1 (by default)
 
 > If using the dual interface mode, see [this hostapd patch](https://github.com/d2r2/upstream-hostapd-force-ht40-mode-patch).
 
