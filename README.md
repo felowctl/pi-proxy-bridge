@@ -2,7 +2,7 @@
 
 Raspberry Pi as a WiFi-to-WiFi hotspot with transparent proxying via Xray.
 
-> Connects to your existing WiFi and creates an access point. Each device that connects to the hotspot gets routed through the proxy. Currently, only the Trojan protocol is supported.
+> Connects to your existing WiFi and creates an access point. Each device that connects to the hotspot gets routed through the proxy.
 
 ## Prerequisites
 
